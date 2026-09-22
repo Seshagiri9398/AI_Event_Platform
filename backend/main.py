@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Depends
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
-from datetime import datetime
+from datetime import date, datetime, timedelta
 
 from backend.models import User, Event
 from backend.database import engine, Base, SessionLocal
@@ -73,6 +73,36 @@ def create_event(event: EventCreate, db: Session = Depends(get_db)):
 def get_users(db: Session = Depends(get_db)):
     return db.query(Event).all()
 
+
+@app.get("/events/search")
+def search_events(
+    title     :str = None, 
+    location  :str = None, 
+    status    :str = None,
+    date      :date = None,
+    db        :Session = Depends(get_db)):
+
+    query = db.query(Event)
+
+    if title:
+        query = query.filter(Event.title.ilike(f"%{title}%"))
+
+    if location:
+        query = query.filter(Event.location.ilike(f"%{location}%"))
+    if status:
+        query = query.filter(Event.status.ilike(f"%{status}%"))
+
+    if date:
+        start = datetime.combine(date, datetime.min.time())
+        end   = start + timedelta(days=1)
+
+        query = query.filter(Event.date >= start, Event.date < end)
+        
+    events = query.all()
+
+    return events
+
+
 @app.get("/events/{event_id}")
 def get_event(event_id:int, db: Session = Depends(get_db)):
     event = db.query(Event).filter(Event.event_id == event_id).first()
@@ -118,3 +148,4 @@ def delete_event(event_id: int, db: Session = Depends(get_db)):
     db.commit()
 
     return {"massage": "Event deleted successlly"}
+
