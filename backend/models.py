@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, UniqueConstraint
 from datetime import datetime, timezone 
 
 
@@ -26,3 +26,16 @@ class Event(Base):
     capacity     = Column(Integer,nullable=False)
     organizer_id = Column(Integer, ForeignKey("users.user_id"), nullable=False)
     status       = Column(String, nullable=False, default="PENDING")
+
+
+
+class Attendee(Base):
+    __tablename__ = "attendees"
+
+    attendee_id   = Column(Integer, primary_key=True)
+    user_id       = Column(Integer, ForeignKey("users.user_id"), nullable=False)
+    event_id      = Column(Integer, ForeignKey("events.event_id"), nullable=False)
+    registered_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+
+    __table_args__ = (UniqueConstraint("user_id","event_id", name="uq_user_event"),)

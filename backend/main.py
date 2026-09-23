@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from datetime import date, datetime, timedelta
 
-from backend.models import User, Event
+from backend.models import User, Event, Attendee
 from backend.database import engine, Base, SessionLocal
 
 app = FastAPI()
@@ -31,6 +31,8 @@ class EventCreate(BaseModel):
     capacity      : int
     organizer_id  : int    
 
+class RegistrationCreate(BaseModel):
+    user_id : int
 
 @app.get("/users")
 def get_users(db: Session = Depends(get_db)):
@@ -102,6 +104,41 @@ def search_events(
 
     return events
 
+@app.post("/events/{event_id}/register")
+def register_event(event_id: int, registration: RegistrationCreate, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.user_id == registration.user_id).first()
+
+    if user is None:
+        return {"message": "User not found"}
+
+    event = db.query(Event).filter(Event.event_id == event_id).first()
+
+    if event is None:
+        return {"message": "Event not found"}
+
+    registered_count = db.query(Attendee).filter(Attendee.event_id == event_id).count()
+
+    if registered_count >= event.capacity:
+        return {"message": "Event is full"}
+
+    existing_registration = db.query(Attendee).filter(Attendee.user_id == registration.user_id, Attendee.event_id == event_id).first()
+
+    if existing_registration is not None:
+        return {"message": "Already registered"}
+
+    new_registration = Attendee(
+        user_id = registration.user_id,
+        event_id  = event_id
+    )
+
+    db.add(new_registration)
+    db.commit()
+    db.refresh(new_registration)
+
+    return new_registration
+
+
+
 
 @app.get("/events/{event_id}")
 def get_event(event_id:int, db: Session = Depends(get_db)):
@@ -147,5 +184,5 @@ def delete_event(event_id: int, db: Session = Depends(get_db)):
     db.delete(event)
     db.commit()
 
-    return {"massage": "Event deleted successlly"}
+    return {"massage": "Event deleted successfully"}
 
