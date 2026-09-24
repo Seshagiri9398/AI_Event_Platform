@@ -39,3 +39,25 @@ class Attendee(Base):
 
 
     __table_args__ = (UniqueConstraint("user_id","event_id", name="uq_user_event"),)
+
+
+class Community(Base):
+    __tablename__ = "communities"
+
+    community_id = Column(Integer, primary_key=True)
+    name         = Column(String, nullable=False)
+    description  = Column(String, nullable=False)
+    creator_id   = Column(Integer, ForeignKey("users.user_id"), nullable=False)
+    created_at   = Column(DateTime(timezone=True), nullable=False, default= lambda: datetime.now(timezone.utc))
+
+
+
+class CommunityMember(Base):
+    __tablename__ = "community_members"
+
+    member_id     = Column(Integer, primary_key=True)
+    user_id       = Column(Integer, ForeignKey("users.user_id"),nullable=False)
+    community_id  = Column(Integer, ForeignKey("communities.community_id"),nullable=False)
+    joined_at     = Column(DateTime(timezone=True), nullable=False, default= lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (UniqueConstraint("user_id","community_id", name = "uq_user_community"),)

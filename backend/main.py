@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from datetime import date, datetime, timedelta
 
-from backend.models import User, Event, Attendee
+from backend.models import User, Event, Attendee, Community, CommunityMember
 from backend.database import engine, Base, SessionLocal
 
 app = FastAPI()
@@ -32,6 +32,16 @@ class EventCreate(BaseModel):
     organizer_id  : int    
 
 class RegistrationCreate(BaseModel):
+    user_id : int
+
+
+class CommunityCreate(BaseModel):
+    name         : str
+    description  : str
+    creator_id   : int
+
+
+class CommunityJoin(BaseModel):
     user_id : int
 
 @app.get("/users")
@@ -138,8 +148,55 @@ def register_event(event_id: int, registration: RegistrationCreate, db: Session 
     return new_registration
 
 
+@app.post("/communities")
+def create_community(community: CommunityCreate, db: Session = Depends(get_db)):
+    creator = db.query(User).filter(User.user_id == community.creator_id).first()
+
+    if creator is None:
+        return {"message": "Creator not found"}
+
+    new_community = Community(
+        name         = community.name,
+        description  = community.description,
+        creator_id   = community.creator_id
+    )
+
+    db.add(new_community)
+    db.commit()
+    db.refresh(new_community)
+
+    return new_community
 
 
+@app.post("/communities/{community_id}/join")
+def join_community(community_id: int, membership: CommunityJoin, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.user_id == membership.user_id).first()
+
+    if user is None:
+        return {"message": "User not found"}
+
+    community = db.query(Community).filter(Community.community_id == community_id).first()
+
+    if community is None:
+        return {"message": "Community not found"}
+
+    existing_membership = db.query(CommunityMember).filter(CommunityMember.user_id == membership.user_id , CommunityMember.community_id == community_id).first()
+
+    if existing_membership is not None:
+        return {"message": "Already a member"}
+
+
+    new_membership = CommunityMember(
+        user_id       = membership.user_id,
+        community_id  = community_id
+    )
+
+    db.add(new_membership)
+    db.commit()
+    db.refresh(new_membership)
+
+    return new_membership
+    
 @app.get("/events/{event_id}")
 def get_event(event_id:int, db: Session = Depends(get_db)):
     event = db.query(Event).filter(Event.event_id == event_id).first()
