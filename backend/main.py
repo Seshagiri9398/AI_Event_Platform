@@ -197,6 +197,35 @@ def join_community(community_id: int, membership: CommunityJoin, db: Session = D
 
     return new_membership
     
+
+@app.get("/communities/{community_id}/members")
+def get_community_members(community_id: int, db:Session = Depends(get_db)):
+    community = db.query(Community).filter(Community.community_id == community_id).first()
+
+    if community is None:
+        return {"message": "Community not found"}
+
+    members = db.query(CommunityMember).filter(CommunityMember.community_id == community_id).all()
+
+    return members
+
+
+
+@app.delete("/communities/{community_id}/leave")
+def leave_community(community_id: int, membership: CommunityJoin, db: Session = Depends(get_db)):
+    existing_membership = db.query(CommunityMember).filter(CommunityMember.user_id == membership.user_id, CommunityMember.community_id == community_id).first()
+
+    if existing_membership is None:
+        return {"message": "User isn't member can't leave"}
+
+    db.delete(existing_membership)
+    db.commit()
+
+    return {"message": "User left the community successfully"}
+
+
+
+
 @app.get("/events/{event_id}")
 def get_event(event_id:int, db: Session = Depends(get_db)):
     event = db.query(Event).filter(Event.event_id == event_id).first()
