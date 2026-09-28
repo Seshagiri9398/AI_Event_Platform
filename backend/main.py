@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from datetime import date, datetime, timedelta
 
-from backend.models import User, Event, Attendee, Community, CommunityMember
+from backend.models import User, Event, Attendee, Community, CommunityMember, Discussion
 from backend.database import engine, Base, SessionLocal
 
 app = FastAPI()
@@ -43,6 +43,14 @@ class CommunityCreate(BaseModel):
 
 class CommunityJoin(BaseModel):
     user_id : int
+
+
+
+class DiscussionCreate(BaseModel):
+    user_id : int
+    content : str
+
+
 
 @app.get("/users")
 def get_users(db: Session = Depends(get_db)):
@@ -208,6 +216,51 @@ def get_community_members(community_id: int, db:Session = Depends(get_db)):
     members = db.query(CommunityMember).filter(CommunityMember.community_id == community_id).all()
 
     return members
+
+@app.post("/communities/{community_id}/discussions")
+def create_descussion(community_id: int, discussion: DiscussionCreate, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.user_id == discussion.user_id).first()
+
+    if user is None:
+        return {"message" : "user not found"}
+
+    community = db.query(Community).filter(Community.community_id == community_id).first()
+
+    if community is None:
+        return {"message" : "community not found"}
+
+    existing_membership = db.query(CommunityMember).filter(CommunityMember.user_id == discussion.user_id, CommunityMember.community_id == community_id).first()
+
+    if existing_membership is None:
+        return {"message" : "User is not a member of this community"}
+
+    new_content = Discussion(
+        user_id       = discussion.user_id,
+        community_id  = community_id,
+        content       = discussion.content
+    )
+
+    db.add(new_content)
+    db.commit()
+    db.refresh(new_content)
+
+    return new_content
+    
+
+@app.get("/communities/{community_id}/discussions")
+def get_discussions(community_id: int, db: Session = Depends(get_db)):
+    community = db.query(Community).filter(Community.community_id == community_id).first()
+
+    if community is None:
+        return {"message" : "community not found"}
+
+    discussions = db.query(Discussion).filter(Discussion.community_id == community_id).all()
+
+    if not discussions:
+        return {"message" : "There is no discussions"}
+
+    return discussions
+    
 
 
 
