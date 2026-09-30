@@ -51,6 +51,15 @@ class DiscussionCreate(BaseModel):
     content : str
 
 
+class DiscussionUpdate(BaseModel):
+    user_id : int
+    content : str
+
+
+class DiscussionDelete(BaseModel):
+    user_id : int
+
+
 
 @app.get("/users")
 def get_users(db: Session = Depends(get_db)):
@@ -217,6 +226,8 @@ def get_community_members(community_id: int, db:Session = Depends(get_db)):
 
     return members
 
+
+
 @app.post("/communities/{community_id}/discussions")
 def create_descussion(community_id: int, discussion: DiscussionCreate, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.user_id == discussion.user_id).first()
@@ -245,6 +256,7 @@ def create_descussion(community_id: int, discussion: DiscussionCreate, db: Sessi
     db.refresh(new_content)
 
     return new_content
+
     
 
 @app.get("/communities/{community_id}/discussions")
@@ -261,6 +273,59 @@ def get_discussions(community_id: int, db: Session = Depends(get_db)):
 
     return discussions
     
+
+
+@app.get("/discussions/{post_id}")
+def get_discussion(post_id: int, db: Session = Depends(get_db)):
+    discussion = db.query(Discussion).filter(Discussion.post_id == post_id).first()
+
+    if discussion is None:
+        return {"message" : "discussion not found"}
+    
+    return discussion
+
+
+
+@app.put("/discussions/{post_id}")
+def update_discussion(post_id: int, discussion_update:DiscussionUpdate, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.user_id == discussion_update.user_id).first()
+
+    if user is None:
+        return {"message" : "User not found"}
+    
+    discussion = db.query(Discussion).filter(Discussion.post_id == post_id).first()
+
+    if discussion is None:
+        return {"message" : "Discussion not found"}
+
+    if discussion.user_id != discussion_update.user_id:
+        return {"message" : "You can't update this discussion"}
+
+    discussion.content = discussion_update.content
+    
+    db.commit()
+    db.refresh(discussion)
+
+    return discussion
+
+
+
+
+@app.delete("/discussions/{post_id}/")
+def delete_discussion(post_id: int, discussion_delete: DiscussionDelete, db: Session = Depends(get_db)):
+    discussion = db.query(Discussion).filter(Discussion.post_id == post_id).first()
+
+    if discussion is None:
+        return {"message" : "Discussion not found"}
+
+    if discussion.user_id != discussion_delete.user_id:
+        return {"message" : "You cannot delete this discussion"}
+    
+    db.delete(discussion)
+    db.commit()
+
+    return {"message" : "Discussion deleted successfully"}
+
 
 
 
