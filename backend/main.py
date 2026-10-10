@@ -1,78 +1,168 @@
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, HTTPException, Header
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr, Field
 from datetime import date, datetime, timedelta
 
+
 from backend.models import User, Event, Attendee, Community, CommunityMember, Discussion
-from backend.database import engine, Base, SessionLocal
+from backend.database import engine, Base,SessionLocal, get_db
+from backend.utils.password import hash_password, verify_password
+from backend.utils.jwt import create_access_token
+from backend.utils.auth import get_current_user, get_current_admin
+from backend.config import ADMIN_BOOTSTRAP_SECRET
+
 
 app = FastAPI()
 
+
 Base.metadata.create_all(bind=engine)
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+
 
 #pydantics
 class UserCreate(BaseModel):
-    name     : str
-    email    : str
-    password : str
+    name     : str = Field(min_length=2, max_length=100)
+    email    : EmailStr
+    password : str = Field(min_length=8)
+
+class PasswordChange(BaseModel):
+    current_password : str
+    new_password     : str = Field(min_length=8)
+
 
 class EventCreate(BaseModel):
     title         : str
     description   : str
     date          : datetime 
     location      : str
-    capacity      : int
-    organizer_id  : int    
-
-class RegistrationCreate(BaseModel):
-    user_id : int
+    capacity      : int   
 
 
 class CommunityCreate(BaseModel):
     name         : str
     description  : str
-    creator_id   : int
-
-
-class CommunityJoin(BaseModel):
-    user_id : int
-
-
 
 class DiscussionCreate(BaseModel):
-    user_id : int
     content : str
-
 
 class DiscussionUpdate(BaseModel):
-    user_id : int
     content : str
 
 
-class DiscussionDelete(BaseModel):
-    user_id : int
+class AdminBootstrapRequest(BaseModel):
+    name     : str
+    email    : str
+    password : str
 
+class LoginRequest(BaseModel):
+    email    : EmailStr
+    password : str = Field(min_length=8)
+
+
+class UserResponse(BaseModel):
+    user_id    : int
+    name       : str
+    email      : str
+    role       : str
+    created_at : datetime
+
+class EventResponse(BaseModel):
+    event_id     : int
+    title        : str
+    description  : str
+    date         : datetime
+    location     : str
+    capacity     : int
+    organizer_id : int
+    status       : str
+
+    model_config = {"from_attributes":True}
+
+
+class AttendeeResponse(BaseModel):
+    attendee_id  : int
+    user_id      : int
+    event_id     : int
+    registered_at : datetime
+
+    model_config = {"from_attributes": True}
+
+class CommunityResponse(BaseModel):
+    community_id  : int
+    name          : str
+    description   : str
+    creator_id    : int
+    created_at    : datetime
+
+    model_config = {"from_attributes": True}
+
+
+class CommunityMemberResponse(BaseModel):
+    member_id   : int
+    user_id     : int
+    community_id : int
+    joined_at    : datetime
+
+    model_config = {"from_attributes" : True}
+
+
+
+@app.post("/admin/bootstrap", response_model=UserResponse)
+def bootstrap_admin(admin: AdminBootstrapRequest, x_admin_bootstrap_secret: str = Header(...), db: Session = Depends(get_db)):
+    if x_admin_bootstrap_secret != ADMIN_BOOTSTRAP_SECRET:
+        raise HTTPException(status_code=403, detail="Invalid admin bootstrap secret")
+
+    existing_admin = db.query(User).filter(User.role == "ADMIN").first()
+
+    if existing_admin is not None:
+        raise HTTPException(status_code=403, detail="Admin already exists")
+
+    hashed_password = hash_password(admin.password)
+    new_admin = User(
+        name     = admin.name,
+        email    = admin.email,
+        password = hashed_password,
+        role     = "ADMIN"
+    )
+    db.add(new_admin)
+    db.commit()
+    db.refresh(new_admin)
+
+    return new_admin
+
+
+@app.post("/users/change-password")
+def password_change(password : PasswordChange, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+
+    is_password_correct = verify_password(password.current_password, current_user.password)
+
+    if not is_password_correct:
+        raise HTTPException(status_code=400, detail="Incorrect current password")
+
+    current_user.password = hash_password(password.new_password)
+    
+    db.commit()
+
+    return {"message" : "Password updated successfully"}
 
 
 @app.get("/users")
-def get_users(db: Session = Depends(get_db)):
+def get_users(db: Session = Depends(get_db), current_user = Depends(get_current_admin)):
     return db.query(User).all()
 
 
 
-@app.post("/users")
+@app.post("/users", response_model=UserResponse)
 def create_user(user: UserCreate, db: Session = Depends(get_db)):
+    existing_user = db.query(User).filter(User.email == user.email).first()
+
+    if existing_user:
+        raise HTTPException(status_code=409, detail="Email already registered")
+    
     new_user = User(
         name     = user.name, 
         email    = user.email, 
-        password = user.password
+        password = hash_password(user.password)
     )
 
     db.add(new_user)
@@ -81,15 +171,44 @@ def create_user(user: UserCreate, db: Session = Depends(get_db)):
 
     return new_user
 
-@app.post("/events")
-def create_event(event: EventCreate, db: Session = Depends(get_db)):
+
+
+@app.post("/login")
+def user_login(login:LoginRequest,db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == login.email).first()
+
+    if user is None:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    
+    is_password_correct =verify_password(login.password,user.password)
+
+    if not is_password_correct:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    
+    token_data = {
+        "user_id" : user.user_id,
+        "role"    : user.role
+    }
+
+    access_token = create_access_token(token_data)
+
+    return {
+        "access_token" : access_token,
+        "token_type"   : "bearer"
+    }
+
+
+
+
+@app.post("/events",status_code=201, response_model=EventResponse)
+def create_event(event: EventCreate, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
     new_event = Event(
         title        = event.title,
         description  = event.description,
         date         = event.date,
         location     = event.location,
         capacity     = event.capacity,
-        organizer_id = event.organizer_id,
+        organizer_id = current_user.user_id,
     )
 
     db.add(new_event)
@@ -98,12 +217,15 @@ def create_event(event: EventCreate, db: Session = Depends(get_db)):
 
     return new_event
 
-@app.get("/events")
-def get_users(db: Session = Depends(get_db)):
+
+
+@app.get("/events", response_model=list[EventResponse])
+def get_events(db: Session = Depends(get_db)):
     return db.query(Event).all()
 
 
-@app.get("/events/search")
+
+@app.get("/events/search", response_model= list[EventResponse])
 def search_events(
     title     :str = None, 
     location  :str = None, 
@@ -131,30 +253,28 @@ def search_events(
 
     return events
 
-@app.post("/events/{event_id}/register")
-def register_event(event_id: int, registration: RegistrationCreate, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.user_id == registration.user_id).first()
 
-    if user is None:
-        return {"message": "User not found"}
+
+@app.post("/events/{event_id}/register",status_code=201, response_model= AttendeeResponse)
+def register_event(event_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
 
     event = db.query(Event).filter(Event.event_id == event_id).first()
 
     if event is None:
-        return {"message": "Event not found"}
+        raise HTTPException(status_code=404, detail="Event not found")
 
     registered_count = db.query(Attendee).filter(Attendee.event_id == event_id).count()
 
     if registered_count >= event.capacity:
-        return {"message": "Event is full"}
+        raise HTTPException(status_code=409, detail="Event is full")
 
-    existing_registration = db.query(Attendee).filter(Attendee.user_id == registration.user_id, Attendee.event_id == event_id).first()
+    existing_registration = db.query(Attendee).filter(Attendee.user_id == current_user.user_id, Attendee.event_id == event_id).first()
 
     if existing_registration is not None:
-        return {"message": "Already registered"}
+        raise HTTPException(status_code=409, detail="Already registered for this event")
 
     new_registration = Attendee(
-        user_id = registration.user_id,
+        user_id = current_user.user_id,
         event_id  = event_id
     )
 
@@ -165,17 +285,15 @@ def register_event(event_id: int, registration: RegistrationCreate, db: Session 
     return new_registration
 
 
-@app.post("/communities")
-def create_community(community: CommunityCreate, db: Session = Depends(get_db)):
-    creator = db.query(User).filter(User.user_id == community.creator_id).first()
 
-    if creator is None:
-        return {"message": "Creator not found"}
-
+@app.post("/communities", status_code=201)
+def create_community(community: CommunityCreate, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+   
+        
     new_community = Community(
         name         = community.name,
         description  = community.description,
-        creator_id   = community.creator_id
+        creator_id   = current_user.user_id,
     )
 
     db.add(new_community)
@@ -185,26 +303,38 @@ def create_community(community: CommunityCreate, db: Session = Depends(get_db)):
     return new_community
 
 
-@app.post("/communities/{community_id}/join")
-def join_community(community_id: int, membership: CommunityJoin, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.user_id == membership.user_id).first()
+@app.get("/communities", response_model= list[CommunityResponse])
+def get_communities(db: Session = Depends(get_db)):
+    return db.query(Community).all()
 
-    if user is None:
-        return {"message": "User not found"}
+
+
+@app.get("/communities/{community_id}", response_model=CommunityResponse)
+def get_community(community_id : int, db: Session = Depends(get_db)):
+    community = db.query(Community).filter(Community.community_id == community_id).first()
+
+    if community is None:
+        raise HTTPException(status_code=404, detail="Community not found")
+    return community
+
+
+
+@app.post("/communities/{community_id}/join")
+def join_community(community_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
 
     community = db.query(Community).filter(Community.community_id == community_id).first()
 
     if community is None:
-        return {"message": "Community not found"}
+        raise HTTPException(status_code=404, detail="Community not found")
 
-    existing_membership = db.query(CommunityMember).filter(CommunityMember.user_id == membership.user_id , CommunityMember.community_id == community_id).first()
+    existing_membership = db.query(CommunityMember).filter(CommunityMember.user_id == current_user.user_id , CommunityMember.community_id == community_id).first()
 
     if existing_membership is not None:
-        return {"message": "Already a member"}
+        raise HTTPException(status_code=409,detail="Already a member")
 
 
     new_membership = CommunityMember(
-        user_id       = membership.user_id,
+        user_id       = current_user.user_id,
         community_id  = community_id
     )
 
@@ -215,12 +345,13 @@ def join_community(community_id: int, membership: CommunityJoin, db: Session = D
     return new_membership
     
 
-@app.get("/communities/{community_id}/members")
-def get_community_members(community_id: int, db:Session = Depends(get_db)):
+
+@app.get("/communities/{community_id}/members", response_model= list[CommunityMemberResponse])
+def get_community_members(community_id: int, db:Session = Depends(get_db),current_user = Depends(get_current_user)):
     community = db.query(Community).filter(Community.community_id == community_id).first()
 
     if community is None:
-        return {"message": "Community not found"}
+        raise HTTPException(status_code=404, detail="Community not found")
 
     members = db.query(CommunityMember).filter(CommunityMember.community_id == community_id).all()
 
@@ -228,25 +359,21 @@ def get_community_members(community_id: int, db:Session = Depends(get_db)):
 
 
 
-@app.post("/communities/{community_id}/discussions")
-def create_descussion(community_id: int, discussion: DiscussionCreate, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.user_id == discussion.user_id).first()
-
-    if user is None:
-        return {"message" : "user not found"}
+@app.post("/communities/{community_id}/discussions",status_code=201)
+def create_discussion(community_id: int, discussion: DiscussionCreate, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
 
     community = db.query(Community).filter(Community.community_id == community_id).first()
 
     if community is None:
-        return {"message" : "community not found"}
+        raise HTTPException(status_code=404, detail="community not found")
 
-    existing_membership = db.query(CommunityMember).filter(CommunityMember.user_id == discussion.user_id, CommunityMember.community_id == community_id).first()
+    existing_membership = db.query(CommunityMember).filter(CommunityMember.user_id == current_user.user_id, CommunityMember.community_id == community_id).first()
 
     if existing_membership is None:
-        return {"message" : "User is not a member of this community"}
+        raise HTTPException(status_code=403, detail="User is not a member of this community")
 
     new_content = Discussion(
-        user_id       = discussion.user_id,
+        user_id       = current_user.user_id,
         community_id  = community_id,
         content       = discussion.content
     )
@@ -260,46 +387,39 @@ def create_descussion(community_id: int, discussion: DiscussionCreate, db: Sessi
     
 
 @app.get("/communities/{community_id}/discussions")
-def get_discussions(community_id: int, db: Session = Depends(get_db)):
+def get_discussions(community_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
     community = db.query(Community).filter(Community.community_id == community_id).first()
 
     if community is None:
-        return {"message" : "community not found"}
+        raise HTTPException(status_code=404, detail="community not found")
 
     discussions = db.query(Discussion).filter(Discussion.community_id == community_id).all()
 
-    if not discussions:
-        return {"message" : "There is no discussions"}
+    return discussions    
 
-    return discussions
-    
 
 
 @app.get("/discussions/{post_id}")
-def get_discussion(post_id: int, db: Session = Depends(get_db)):
+def get_discussion(post_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
     discussion = db.query(Discussion).filter(Discussion.post_id == post_id).first()
 
     if discussion is None:
-        return {"message" : "discussion not found"}
+        raise HTTPException(status_code=404, detail="Discussion not found")
     
     return discussion
 
 
 
 @app.put("/discussions/{post_id}")
-def update_discussion(post_id: int, discussion_update:DiscussionUpdate, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.user_id == discussion_update.user_id).first()
-
-    if user is None:
-        return {"message" : "User not found"}
+def update_discussion(post_id: int, discussion_update:DiscussionUpdate, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
     
     discussion = db.query(Discussion).filter(Discussion.post_id == post_id).first()
 
     if discussion is None:
-        return {"message" : "Discussion not found"}
+        raise HTTPException(status_code=404, detail="Discussion not found")
 
-    if discussion.user_id != discussion_update.user_id:
-        return {"message" : "You can't update this discussion"}
+    if discussion.user_id != current_user.user_id:
+        raise HTTPException(status_code=403, detail="You don't have permission to update this discussion")
 
     discussion.content = discussion_update.content
     
@@ -310,31 +430,27 @@ def update_discussion(post_id: int, discussion_update:DiscussionUpdate, db: Sess
 
 
 
-
-@app.delete("/discussions/{post_id}/")
-def delete_discussion(post_id: int, discussion_delete: DiscussionDelete, db: Session = Depends(get_db)):
+@app.delete("/discussions/{post_id}/", status_code=204)
+def delete_discussion(post_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
     discussion = db.query(Discussion).filter(Discussion.post_id == post_id).first()
 
     if discussion is None:
-        return {"message" : "Discussion not found"}
+        raise HTTPException(status_code=404, detail="Discussion not found")
 
-    if discussion.user_id != discussion_delete.user_id:
-        return {"message" : "You cannot delete this discussion"}
+    if discussion.user_id != current_user.user_id:
+        raise HTTPException(status_code=403, detail="You don't have permission to delete this discussion")
     
     db.delete(discussion)
     db.commit()
 
-    return {"message" : "Discussion deleted successfully"}
-
-
 
 
 @app.delete("/communities/{community_id}/leave")
-def leave_community(community_id: int, membership: CommunityJoin, db: Session = Depends(get_db)):
-    existing_membership = db.query(CommunityMember).filter(CommunityMember.user_id == membership.user_id, CommunityMember.community_id == community_id).first()
+def leave_community(community_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+    existing_membership = db.query(CommunityMember).filter(CommunityMember.user_id == current_user.user_id, CommunityMember.community_id == community_id).first()
 
     if existing_membership is None:
-        return {"message": "User isn't member can't leave"}
+        raise HTTPException(status_code=404, detail="User is not a member of this community")
 
     db.delete(existing_membership)
     db.commit()
@@ -343,34 +459,31 @@ def leave_community(community_id: int, membership: CommunityJoin, db: Session = 
 
 
 
-
-@app.get("/events/{event_id}")
+@app.get("/events/{event_id}", response_model=EventResponse)
 def get_event(event_id:int, db: Session = Depends(get_db)):
     event = db.query(Event).filter(Event.event_id == event_id).first()
 
     if event is None:
-        return {"Event not found"}
+        raise HTTPException(status_code=404, detail="Event not found")
     return event
 
 
-@app.put("/events/{event_id}")
-def update_event(
-    event_id: int,
-    event: EventCreate,
-    db: Session = Depends(get_db)
-):
+@app.put("/events/{event_id}", response_model= EventResponse)
+def update_event(event_id: int, event: EventCreate, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
 
     existing_event = (db.query(Event).filter(Event.event_id == event_id).first())
 
     if existing_event is None:
-        return {"message": "Event not found"}
+        raise HTTPException(status_code=404, detail="Event not found")
 
+    if existing_event.organizer_id != current_user.user_id:
+        raise HTTPException(status_code=403, detail="You don't have permission to update this event")
+    
     existing_event.title        = event.title
     existing_event.description  = event.description
     existing_event.date         = event.date
     existing_event.location     = event.location
     existing_event.capacity     = event.capacity
-    existing_event.organizer_id = event.organizer_id
 
     db.commit()
     db.refresh(existing_event)
@@ -378,15 +491,16 @@ def update_event(
     return existing_event
 
 
-@app.delete("/events/{event_id}")
-def delete_event(event_id: int, db: Session = Depends(get_db)):
+
+@app.delete("/events/{event_id}", status_code=204)
+def delete_event(event_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
     event = (db.query(Event).filter(Event.event_id == event_id).first())
 
     if event is None:
-        return {"message": "Event not found"}
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    if event.organizer_id != current_user.user_id:
+        raise HTTPException(status_code=403, detail="You don't have permission to delete this event")
 
     db.delete(event)
     db.commit()
-
-    return {"massage": "Event deleted successfully"}
-
