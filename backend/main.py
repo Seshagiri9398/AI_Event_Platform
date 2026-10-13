@@ -106,6 +106,15 @@ class CommunityMemberResponse(BaseModel):
     model_config = {"from_attributes" : True}
 
 
+class DiscussionResponse(BaseModel):
+    post_id      : int
+    user_id      : int
+    community_id : int
+    content      : str
+    created_at   : datetime
+
+    model_config = {"from_attributes" : True}
+
 
 @app.post("/admin/bootstrap", response_model=UserResponse)
 def bootstrap_admin(admin: AdminBootstrapRequest, x_admin_bootstrap_secret: str = Header(...), db: Session = Depends(get_db)):
@@ -359,7 +368,7 @@ def get_community_members(community_id: int, db:Session = Depends(get_db),curren
 
 
 
-@app.post("/communities/{community_id}/discussions",status_code=201)
+@app.post("/communities/{community_id}/discussions",response_model= DiscussionResponse, status_code=201)
 def create_discussion(community_id: int, discussion: DiscussionCreate, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
 
     community = db.query(Community).filter(Community.community_id == community_id).first()
@@ -386,7 +395,7 @@ def create_discussion(community_id: int, discussion: DiscussionCreate, db: Sessi
 
     
 
-@app.get("/communities/{community_id}/discussions")
+@app.get("/communities/{community_id}/discussions",response_model=list[DiscussionResponse])
 def get_discussions(community_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
     community = db.query(Community).filter(Community.community_id == community_id).first()
 
@@ -399,7 +408,7 @@ def get_discussions(community_id: int, db: Session = Depends(get_db), current_us
 
 
 
-@app.get("/discussions/{post_id}")
+@app.get("/discussions/{post_id}",response_model=DiscussionResponse)
 def get_discussion(post_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
     discussion = db.query(Discussion).filter(Discussion.post_id == post_id).first()
 
@@ -410,7 +419,7 @@ def get_discussion(post_id: int, db: Session = Depends(get_db), current_user = D
 
 
 
-@app.put("/discussions/{post_id}")
+@app.put("/discussions/{post_id}", response_model= DiscussionResponse)
 def update_discussion(post_id: int, discussion_update:DiscussionUpdate, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
     
     discussion = db.query(Discussion).filter(Discussion.post_id == post_id).first()
