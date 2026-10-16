@@ -5,7 +5,7 @@ from datetime import date, datetime, timedelta
 
 
 from backend.models import User, Event, Attendee, Community, CommunityMember, Discussion
-from backend.database import engine, Base,SessionLocal, get_db
+from backend.database import engine, Base, get_db
 from backend.utils.password import hash_password, verify_password
 from backend.utils.jwt import create_access_token
 from backend.utils.auth import get_current_user, get_current_admin
