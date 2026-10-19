@@ -4,7 +4,7 @@ from pydantic import BaseModel, EmailStr, Field
 from datetime import date, datetime, timedelta
 
 
-from backend.models import User, Event, Attendee, Community, CommunityMember, Discussion
+from backend.models import User, Event, Attendee, Community, CommunityMember, Discussion, Notification
 from backend.database import engine, Base, get_db
 from backend.utils.password import hash_password, verify_password
 from backend.utils.jwt import create_access_token
@@ -229,8 +229,15 @@ def create_event(event: EventCreate, db: Session = Depends(get_db), current_user
 
 
 @app.get("/events", response_model=list[EventResponse])
-def get_events(db: Session = Depends(get_db)):
-    return db.query(Event).all()
+def get_events(
+    skip: int = 0,
+    limit: int = 10,
+    db: Session = Depends(get_db)
+    ):
+
+    events = (db.query(Event).offset(skip).limit(limit).all())
+
+    return events
 
 
 
@@ -287,10 +294,20 @@ def register_event(event_id: int, db: Session = Depends(get_db), current_user = 
         event_id  = event_id
     )
 
-    db.add(new_registration)
-    db.commit()
-    db.refresh(new_registration)
+   
 
+    try:
+        notification = Notification(user_id = current_user.user_id, message = f"You have successfully registered for the event: {event.title}")
+
+        db.add(new_registration)
+        db.add(notification)
+
+        db.commit()
+        db.refresh(new_registration)
+    except Exception:
+        db.rollback()
+        raise
+    
     return new_registration
 
 
@@ -347,9 +364,19 @@ def join_community(community_id: int, db: Session = Depends(get_db), current_use
         community_id  = community_id
     )
 
-    db.add(new_membership)
-    db.commit()
-    db.refresh(new_membership)
+
+
+    try:
+        notification = Notification(user_id = current_user.user_id, message = f"You have successfully joined the community: {community.name}")
+
+        db.add(new_membership)
+        db.add(notification)
+
+        db.commit()
+        db.refresh(new_membership)
+    except Exception:
+        db.rollback()
+        raise
 
     return new_membership
     
@@ -513,3 +540,50 @@ def delete_event(event_id: int, db: Session = Depends(get_db), current_user = De
 
     db.delete(event)
     db.commit()
+
+
+@app.post("/notifications")
+def create_notification(user_id: int, message: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    notification = Notification(
+        user_id = user_id,
+        message = message
+    )
+
+    db.add(notification)
+    db.commit()
+    db.refresh(notification)
+
+    return notification
+
+@app.get("/notifications")
+def get_notification(skip: int = 0, limit: int = 10, unread_only: bool = False, db: Session = Depends(get_db), current_user : User = Depends(get_current_user)):
+
+    query = db.query(Notification).filter(Notification.user_id == current_user.user_id)
+
+    if unread_only:
+        query = query.filter(Notification.is_read.is_(False))
+
+    notifications = (query.order_by(Notification.created_at.desc()).offset(skip).limit(limit).all())
+
+    return notifications
+
+
+
+@app.get("/notifications/unread-count")
+def get_unread_notification_count(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    unread_count = (db.query(Notification).filter(Notification.user_id == current_user.user_id, Notification.is_read.is_(False)).count())
+
+    return {"unread_count" : unread_count}
+
+
+@app.patch("/notifications/{notification_id}/read")
+def mark_notification_as_read(notification_id : int, db: Session = Depends(get_db), current_user : User = Depends(get_current_user)):
+    find_notification = db.query(Notification).filter(Notification.notification_id == notification_id, Notification.user_id == current_user.user_id).first()
+
+    if find_notification is None:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    find_notification.is_read = True
+
+    db.commit()
+    return find_notification
+

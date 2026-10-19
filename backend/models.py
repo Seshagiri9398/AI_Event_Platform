@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, UniqueConstraint
 from datetime import datetime, timezone 
 
 
@@ -72,3 +72,14 @@ class Discussion(Base):
     community_id  = Column(Integer, ForeignKey("communities.community_id"), nullable=False)
     content       = Column(String, nullable=False)
     created_at    = Column(DateTime(timezone=True), nullable=False, default= lambda: datetime.now(timezone.utc))
+
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    notification_id = Column(Integer, primary_key=True, index=True)
+    user_id         = Column(Integer, ForeignKey("users.user_id"), nullable=False)
+    message         = Column(String, nullable=False)
+    is_read         = Column(Boolean, default=False, nullable=False)
+    created_at      = Column(DateTime, default=datetime.utcnow, nullable=False)

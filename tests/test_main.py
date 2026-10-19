@@ -292,3 +292,32 @@ def test_admin_can_get_all_users(client):
     )
 
     assert response.status_code == 200
+
+
+
+def test_admin_bootstrap_invalid_secret(client):
+    response = client.post(
+        "/admin/bootstrap",
+        headers={
+            "x-admin-bootstrap-secret" : "wrong-secret"
+        },
+        json={
+            "name" : "Unauthorized Admin",
+            "email" : "unauthorized_admin@example.com",
+            "password" : "AdminPassword123!"
+        }
+    )
+
+    assert response.status_code == 403
+
+
+def test_admin_bootstrap_missing_secret(client):
+    response = client.post(
+        "/admin/bootstrap",
+         json={
+                "name" : "Unauthorized Admin",
+                "email" : "unauthorized_admin@example.com",
+                "password" : "AdminPassword123!"
+        }
+    )
+    assert response.status_code == 422
