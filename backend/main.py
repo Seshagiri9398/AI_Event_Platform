@@ -11,8 +11,18 @@ from backend.utils.jwt import create_access_token
 from backend.utils.auth import get_current_user, get_current_admin
 from backend.config import ADMIN_BOOTSTRAP_SECRET
 
+from fastapi.middleware.cors import CORSMiddleware
+
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 Base.metadata.create_all(bind=engine)
