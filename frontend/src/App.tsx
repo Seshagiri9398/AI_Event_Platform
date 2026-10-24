@@ -1,6 +1,7 @@
 
 import { useEffect, useState } from 'react'
 import api from './api/axios'
+import { Link } from 'react-router-dom'
 
 interface Event {
   event_id: number
@@ -18,6 +19,7 @@ function App() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
+  const [registeredEvents, setRegisteredEvents] = useState<number[]>([])
 
   // Search events by title or location
   const filteredEvents = events.filter((event) =>
@@ -26,7 +28,48 @@ function App() {
       .includes(search.toLowerCase())
   )
 
+  // Register for an event using the JWT
+  const handleRegister = async (eventId: number) => {
+    const token = localStorage.getItem('access_token')
+
+    if (!token) {
+      window.location.href = '/login'
+      return
+    }
+
+    try {
+      await api.post(
+        `/events/${eventId}/register`,
+        {},
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      )
+
+      setRegisteredEvents((previous) => previous.includes(eventId) ? previous : [...previous, eventId])
+    } catch (error: unknown) {
+      if (
+        typeof error === 'object' &&
+        error !== null &&
+        'response' in error &&
+        error.response &&
+        typeof error.response === 'object' &&
+        'data' in error.response &&
+        error.response.data &&
+        typeof error.response.data === 'object' &&
+        'detail' in error.response.data
+      ) {
+        alert(String(error.response.data.detail))
+      } else {
+        alert('Unable to register. Please try again.')
+      }
+    }
+  }
+
   // Fetch events from FastAPI
+  
   useEffect(() => {
     const fetchEvents = async () => {
       try {
@@ -39,33 +82,67 @@ function App() {
       }
     }
 
+    const fetchMyRegistrations = async () => {
+      const token = localStorage.getItem('access_token')
+
+      if (!token) return
+
+      try {
+        const response = await api.get<{ event_id: number }[]>(
+          '/my-registrations',
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        )
+
+        setRegisteredEvents(
+          response.data.map((registration) => registration.event_id)
+        )
+      } catch (error) {
+        console.error('Unable to load registrations:', error)
+      }
+    }
+
     fetchEvents()
+    fetchMyRegistrations()
   }, [])
+
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
-      {/* Navigation */}
       <nav className="flex items-center justify-between border-b border-slate-800 px-6 py-5 sm:px-8">
-        <h1 className="text-2xl font-bold text-indigo-400">
-          EventHub
-        </h1>
+        <h1 className="text-2xl font-bold text-indigo-400">EventHub</h1>
 
-        <span className="text-slate-300">
-          Discover events
-        </span>
+        <div className="flex items-center gap-5">
+          <Link to="/" className="text-slate-300 hover:text-white">
+            Discover Events
+          </Link>
+
+          <Link
+            to="/my-registrations"
+            className="text-slate-300 hover:text-white"
+          >
+            My Registrations
+          </Link>
+
+          <Link
+            to="/login"
+            className="rounded-lg bg-indigo-600 px-4 py-2 font-medium transition hover:bg-indigo-500"
+          >
+            Log In
+          </Link>
+        </div>
       </nav>
 
       <main className="mx-auto max-w-6xl px-6 py-12">
-        {/* Page heading */}
-        <h2 className="text-4xl font-bold">
-          Explore Events
-        </h2>
+        <h2 className="text-4xl font-bold">Explore Events</h2>
 
         <p className="mt-3 text-slate-400">
           Discover events and connect with your community.
         </p>
 
-        {/* Search input */}
         <input
           type="text"
           placeholder="Search events by title or location..."
@@ -74,28 +151,20 @@ function App() {
           className="mt-6 w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none placeholder:text-slate-500 focus:border-indigo-500"
         />
 
-        {/* Loading state */}
         {loading && (
-          <p className="mt-8 text-slate-300">
-            Loading events...
-          </p>
+          <p className="mt-8 text-slate-300">Loading events...</p>
         )}
 
-        {/* Error state */}
         {!loading && error && (
-          <p className="mt-8 text-red-400">
-            {error}
-          </p>
+          <p className="mt-8 text-red-400">{error}</p>
         )}
 
-        {/* No events in database */}
         {!loading && !error && events.length === 0 && (
           <p className="mt-8 text-slate-400">
             No events available yet.
           </p>
         )}
 
-        {/* Event cards */}
         {!loading && !error && events.length > 0 && (
           <section className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {filteredEvents.length === 0 ? (
@@ -108,7 +177,6 @@ function App() {
                   key={event.event_id}
                   className="rounded-xl border border-slate-800 bg-slate-900 p-6 transition hover:border-indigo-500"
                 >
-                  {/* Event title and status */}
                   <div className="flex items-start justify-between gap-3">
                     <h3 className="text-xl font-semibold">
                       {event.title}
@@ -119,12 +187,10 @@ function App() {
                     </span>
                   </div>
 
-                  {/* Description */}
                   <p className="mt-3 text-slate-400">
                     {event.description}
                   </p>
 
-                  {/* Event details */}
                   <div className="mt-5 space-y-3 text-sm text-slate-300">
                     <p>📍 {event.location}</p>
 
@@ -136,14 +202,26 @@ function App() {
                       })}
                     </p>
 
-                    <p>
-                      Capacity: {event.capacity}
-                    </p>
-
-                    <p>
-                      Organizer ID: {event.organizer_id}
-                    </p>
+                    <p>Capacity: {event.capacity}</p>
+                    <p>Organizer ID: {event.organizer_id}</p>
                   </div>
+
+                  {/* Register button belongs inside this event card */}
+                 
+                  <button
+                    onClick={() => handleRegister(event.event_id)}
+                    disabled={registeredEvents.includes(event.event_id)}
+                    className={`mt-6 w-full rounded-lg px-4 py-3 font-semibold transition ${
+                      registeredEvents.includes(event.event_id)
+                        ? 'cursor-not-allowed bg-emerald-700 text-white'
+                        : 'bg-indigo-600 hover:bg-indigo-500'
+                    }`}
+                  >
+                    {registeredEvents.includes(event.event_id)
+                      ? 'Registered ✓'
+                      : 'Register for Event'}
+                  </button>
+
                 </article>
               ))
             )}

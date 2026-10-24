@@ -321,6 +321,25 @@ def register_event(event_id: int, db: Session = Depends(get_db), current_user = 
     return new_registration
 
 
+@app.get("/my-registrations")
+def get_my_registrations(db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+    registrations = (db.query(Attendee, Event)
+                     .join(Event, Attendee.event_id == Event.event_id)
+                     .filter(Attendee.user_id == current_user.user_id)
+                     .all())
+
+    return [
+        {
+            "event_id" : event.event_id,
+            "title"    : event.title,
+            "date"     : event.date,
+            "location" : event.location,
+            "status"   : event.status,
+        }
+        for registration, event in registrations
+    ]
+
+
 
 @app.post("/communities", status_code=201)
 def create_community(community: CommunityCreate, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
