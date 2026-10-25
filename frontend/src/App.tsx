@@ -1,7 +1,7 @@
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+import { Link, useLocation } from 'react-router-dom'
 import api from './api/axios'
-import { Link } from 'react-router-dom'
 
 interface Event {
   event_id: number
@@ -14,21 +14,75 @@ interface Event {
   status: string
 }
 
+interface Registration {
+  event_id: number
+}
+
 function App() {
+  const location = useLocation()
+
   const [events, setEvents] = useState<Event[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
   const [registeredEvents, setRegisteredEvents] = useState<number[]>([])
 
-  // Search events by title or location
+  // Search all events, not just registered events.
   const filteredEvents = events.filter((event) =>
     `${event.title} ${event.location}`
       .toLowerCase()
       .includes(search.toLowerCase())
   )
 
-  // Register for an event using the JWT
+  // Fetch ALL events from the backend.
+  const fetchEvents = useCallback(async () => {
+    try {
+      setError('')
+      const response = await api.get<Event[]>('/events')
+
+      // Keep every event returned by the API.
+      setEvents(response.data)
+    } catch {
+      setError('Unable to load events. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  // Fetch registrations separately for the current user.
+  const fetchMyRegistrations = useCallback(async () => {
+    const token = localStorage.getItem('access_token')
+
+    if (!token) {
+      setRegisteredEvents([])
+      return
+    }
+
+    try {
+      const response = await api.get<Registration[]>(
+        '/my-registrations',
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      )
+
+      setRegisteredEvents(
+        response.data.map((registration) => registration.event_id)
+      )
+    } catch (error) {
+      console.error('Unable to load registrations:', error)
+    }
+  }, [])
+
+  // Refresh when navigating back to Home.
+  useEffect(() => {
+    setLoading(true)
+    fetchEvents()
+    fetchMyRegistrations()
+  }, [location.key, fetchEvents, fetchMyRegistrations])
+
   const handleRegister = async (eventId: number) => {
     const token = localStorage.getItem('access_token')
 
@@ -48,7 +102,11 @@ function App() {
         }
       )
 
-      setRegisteredEvents((previous) => previous.includes(eventId) ? previous : [...previous, eventId])
+      setRegisteredEvents((previous) =>
+        previous.includes(eventId)
+          ? previous
+          : [...previous, eventId]
+      )
     } catch (error: unknown) {
       if (
         typeof error === 'object' &&
@@ -67,63 +125,36 @@ function App() {
       }
     }
   }
-    // Logout the current user
+
   const handleLogout = () => {
     localStorage.removeItem('access_token')
     setRegisteredEvents([])
     window.location.href = '/login'
   }
 
-  // Fetch events from FastAPI
-  
-  useEffect(() => {
-    const fetchEvents = async () => {
-      try {
-        const response = await api.get<Event[]>('/events')
-        setEvents(response.data)
-      } catch {
-        setError('Unable to load events. Please try again.')
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    const fetchMyRegistrations = async () => {
-      const token = localStorage.getItem('access_token')
-
-      if (!token) return
-
-      try {
-        const response = await api.get<{ event_id: number }[]>(
-          '/my-registrations',
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        )
-
-        setRegisteredEvents(
-          response.data.map((registration) => registration.event_id)
-        )
-      } catch (error) {
-        console.error('Unable to load registrations:', error)
-      }
-    }
-
-    fetchEvents()
-    fetchMyRegistrations()
-  }, [])
-
+  const isLoggedIn = Boolean(localStorage.getItem('access_token'))
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
+      {/* Navigation */}
       <nav className="flex items-center justify-between border-b border-slate-800 px-6 py-5 sm:px-8">
-        <h1 className="text-2xl font-bold text-indigo-400">EventHub</h1>
+        <h1 className="text-2xl font-bold text-indigo-400">
+          EventHub
+        </h1>
 
         <div className="flex items-center gap-5">
-          <Link to="/" className="text-slate-300 hover:text-white">
+          <Link
+            to="/"
+            className="text-slate-300 hover:text-white"
+          >
             Discover Events
+          </Link>
+
+          <Link
+            to="/create-event"
+            className="text-slate-300 hover:text-white"
+          >
+            Create Event
           </Link>
 
           <Link
@@ -133,7 +164,7 @@ function App() {
             My Registrations
           </Link>
 
-          {localStorage.getItem('access_token') ? (
+          {isLoggedIn ? (
             <button
               onClick={handleLogout}
               className="rounded-lg bg-red-600 px-4 py-2 font-medium transition hover:bg-red-500"
@@ -151,8 +182,11 @@ function App() {
         </div>
       </nav>
 
+      {/* Home page: all events */}
       <main className="mx-auto max-w-6xl px-6 py-12">
-        <h2 className="text-4xl font-bold">Explore Events</h2>
+        <h2 className="text-4xl font-bold">
+          Explore Events
+        </h2>
 
         <p className="mt-3 text-slate-400">
           Discover events and connect with your community.
@@ -167,11 +201,15 @@ function App() {
         />
 
         {loading && (
-          <p className="mt-8 text-slate-300">Loading events...</p>
+          <p className="mt-8 text-slate-300">
+            Loading events...
+          </p>
         )}
 
         {!loading && error && (
-          <p className="mt-8 text-red-400">{error}</p>
+          <p className="mt-8 text-red-400">
+            {error}
+          </p>
         )}
 
         {!loading && !error && events.length === 0 && (
@@ -187,58 +225,66 @@ function App() {
                 No events match your search.
               </p>
             ) : (
-              filteredEvents.map((event) => (
-                <article
-                  key={event.event_id}
-                  className="rounded-xl border border-slate-800 bg-slate-900 p-6 transition hover:border-indigo-500"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <h3 className="text-xl font-semibold">
-                      {event.title}
-                    </h3>
+              filteredEvents.map((event) => {
+                // Registration status controls only the button.
+                const isRegistered = registeredEvents.includes(
+                  event.event_id
+                )
 
-                    <span className="shrink-0 rounded-full bg-indigo-950 px-3 py-1 text-xs text-indigo-300">
-                      {event.status}
-                    </span>
-                  </div>
+                return (
+                  <article
+                    key={event.event_id}
+                    className="rounded-xl border border-slate-800 bg-slate-900 p-6 transition hover:border-indigo-500"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <h3 className="text-xl font-semibold">
+                        {event.title}
+                      </h3>
 
-                  <p className="mt-3 text-slate-400">
-                    {event.description}
-                  </p>
+                      <span className="shrink-0 rounded-full bg-indigo-950 px-3 py-1 text-xs text-indigo-300">
+                        {event.status}
+                      </span>
+                    </div>
 
-                  <div className="mt-5 space-y-3 text-sm text-slate-300">
-                    <p>📍 {event.location}</p>
-
-                    <p>
-                      📅{' '}
-                      {new Date(event.date).toLocaleString('en-IN', {
-                        dateStyle: 'medium',
-                        timeStyle: 'short',
-                      })}
+                    <p className="mt-3 text-slate-400">
+                      {event.description}
                     </p>
 
-                    <p>Capacity: {event.capacity}</p>
-                    <p>Organizer ID: {event.organizer_id}</p>
-                  </div>
+                    <div className="mt-5 space-y-3 text-sm text-slate-300">
+                      <p>📍 {event.location}</p>
 
-                  {/* Register button belongs inside this event card */}
-                 
-                  <button
-                    onClick={() => handleRegister(event.event_id)}
-                    disabled={registeredEvents.includes(event.event_id)}
-                    className={`mt-6 w-full rounded-lg px-4 py-3 font-semibold transition ${
-                      registeredEvents.includes(event.event_id)
-                        ? 'cursor-not-allowed bg-emerald-700 text-white'
-                        : 'bg-indigo-600 hover:bg-indigo-500'
-                    }`}
-                  >
-                    {registeredEvents.includes(event.event_id)
-                      ? 'Registered ✓'
-                      : 'Register for Event'}
-                  </button>
+                      <p>
+                        📅{' '}
+                        {new Date(event.date).toLocaleString(
+                          'en-IN',
+                          {
+                            dateStyle: 'medium',
+                            timeStyle: 'short',
+                          }
+                        )}
+                      </p>
 
-                </article>
-              ))
+                      <p>Capacity: {event.capacity}</p>
+
+                      <p>Organizer ID: {event.organizer_id}</p>
+                    </div>
+
+                    <button
+                      onClick={() => handleRegister(event.event_id)}
+                      disabled={isRegistered}
+                      className={`mt-6 w-full rounded-lg px-4 py-3 font-semibold transition ${
+                        isRegistered
+                          ? 'cursor-not-allowed bg-emerald-700 text-white'
+                          : 'bg-indigo-600 hover:bg-indigo-500'
+                      }`}
+                    >
+                      {isRegistered
+                        ? 'Registered ✓'
+                        : 'Register for Event'}
+                    </button>
+                  </article>
+                )
+              })
             )}
           </section>
         )}

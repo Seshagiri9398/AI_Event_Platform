@@ -239,13 +239,9 @@ def create_event(event: EventCreate, db: Session = Depends(get_db), current_user
 
 
 @app.get("/events", response_model=list[EventResponse])
-def get_events(
-    skip: int = 0,
-    limit: int = 10,
-    db: Session = Depends(get_db)
-    ):
+def get_events(db: Session = Depends(get_db)):
 
-    events = (db.query(Event).offset(skip).limit(limit).all())
+    events = db.query(Event).order_by(Event.event_id.desc()).all()
 
     return events
 
