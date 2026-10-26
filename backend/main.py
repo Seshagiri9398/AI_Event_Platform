@@ -88,6 +88,9 @@ class EventResponse(BaseModel):
 
     model_config = {"from_attributes":True}
 
+class EventWithCapacity(EventResponse):
+    registered_count : int
+    available_seats  : int
 
 class AttendeeResponse(BaseModel):
     attendee_id  : int
@@ -238,13 +241,30 @@ def create_event(event: EventCreate, db: Session = Depends(get_db), current_user
 
 
 
-@app.get("/events", response_model=list[EventResponse])
+@app.get("/events", response_model=list[EventWithCapacity])
 def get_events(db: Session = Depends(get_db)):
 
     events = db.query(Event).order_by(Event.event_id.desc()).all()
+    
+    result = []
 
-    return events
+    for event in events:
+        registered_count = (db.query(Attendee).filter(Attendee.event_id == event.event_id).count())
 
+        result.append({
+            "event_id"      : event.event_id,
+            "title"         : event.title,
+            "description"   : event.description,
+            "date"          : event.date,
+            "location"      : event.location,
+            "capacity"      : event.capacity,
+            "organizer_id"  : event.organizer_id,
+            "status"        : event.status,
+            "registered_count" : registered_count,
+            "available_seats" : max(event.capacity - registered_count, 0),
+        })
+
+    return result
 
 
 @app.get("/events/search", response_model= list[EventResponse])

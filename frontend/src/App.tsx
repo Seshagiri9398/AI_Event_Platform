@@ -5,14 +5,16 @@ import { jwtDecode } from 'jwt-decode'
 import api from './api/axios'
 
 interface Event {
-  event_id: number
-  title: string
-  description: string
-  date: string
-  location: string
-  capacity: number
-  organizer_id: number
-  status: string
+  event_id         : number
+  title            : string
+  description      : string
+  date             : string
+  location         : string
+  capacity         : number
+  organizer_id     : number
+  status           : string
+  registered_count : number
+  available_seats  : number
 }
 
 interface Registration {
@@ -364,8 +366,8 @@ function App() {
                   <p className="mb-4 line-clamp-3 text-gray-600">
                     {event.description || 'No description available.'}
                   </p>
-
-                  <div className="mb-5 space-y-2 text-sm text-gray-600">
+                  
+                  <div className="mb-5 space-y-3 text-sm text-gray-600">
                     <p>
                       <span className="font-semibold">Date:</span>{' '}
                       {new Date(event.date).toLocaleString()}
@@ -376,11 +378,34 @@ function App() {
                       {event.location}
                     </p>
 
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="rounded-lg bg-blue-50 p-3">
+                        <p className="text-gray-500">Registered</p>
+                        <p className="mt-1 text-xl font-bold text-blue-700">
+                          {event.registered_count}
+                        </p>
+                      </div>
+
+                      <div className="rounded-lg bg-green-50 p-3">
+                        <p className="text-gray-500">Seats Available</p>
+                        <p className="mt-1 text-xl font-bold text-green-700">
+                          {event.available_seats}
+                        </p>
+                      </div>
+                    </div>
+
                     <p>
-                      <span className="font-semibold">Capacity:</span>{' '}
+                      <span className="font-semibold">Total Capacity:</span>{' '}
                       {event.capacity} participants
                     </p>
+
+                    {event.available_seats === 0 && (
+                      <span className="inline-block rounded-full bg-red-100 px-3 py-1 font-semibold text-red-700">
+                        Event Full
+                      </span>
+                    )}
                   </div>
+
 
                   <div className="mt-auto flex flex-wrap gap-2">
                     {/* Everyone can view event details */}
@@ -413,12 +438,14 @@ function App() {
                     {/* Registration is available to logged-in users */}
                     <button
                       onClick={() => handleRegister(event.event_id)}
-                      disabled={isRegistered}
+                      disabled={isRegistered || event.available_seats === 0}
                       className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-400"
                     >
-                      {isRegistered
-                        ? 'Already Registered'
-                        : 'Register'}
+                      {event.available_seats === 0
+                        ? 'Event Full'
+                        : isRegistered
+                          ? 'Already Registered'
+                          : 'Register'}
                     </button>
                   </div>
                 </article>

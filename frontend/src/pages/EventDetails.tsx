@@ -4,14 +4,16 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import api from '../api/axios'
 
 interface Event {
-  event_id: number
-  title: string
-  description: string
-  date: string
-  location: string
-  capacity: number
-  organizer_id: number
-  status: string
+  event_id          : number
+  title             : string
+  description       : string
+  date              : string
+  location          : string
+  capacity          : number
+  organizer_id      : number
+  status            : string
+  registered_count  : number
+  available_seats   : number
 }
 
 function EventDetails() {
@@ -174,7 +176,21 @@ function EventDetails() {
               <div className="rounded-xl bg-gray-50 p-4">
                 <p className="text-sm text-gray-500">Capacity</p>
                 <p className="mt-1 font-semibold text-gray-900">
-                  {event.capacity} participants
+                    {event.capacity} participants
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-gray-50 p-4">
+                <p className="text-sm text-gray-500">Registered Participants</p>
+                <p className="mt-1 font-semibold text-blue-700">
+                    {event.registered_count}
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-gray-50 p-4">
+                <p className="text-sm text-gray-500">Seats Available</p>
+                <p className="mt-1 font-semibold text-green-700">
+                    {event.available_seats}
                 </p>
               </div>
 
@@ -204,13 +220,17 @@ function EventDetails() {
               </p>
             )}
 
-            <button
+           <button
               type="button"
               onClick={handleRegister}
-              disabled={registering}
+              disabled={registering || event.available_seats === 0}
               className="w-full rounded-lg bg-blue-600 px-5 py-3 font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {registering ? 'Registering...' : 'Register for Event'}
+              {event.available_seats === 0
+                ? 'Event Full'
+                : registering
+                ? 'Registering...'
+                : 'Register for Event'}
             </button>
           </div>
         </div>
