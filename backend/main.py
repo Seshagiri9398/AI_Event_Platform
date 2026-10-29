@@ -337,6 +337,57 @@ def register_event(event_id: int, db: Session = Depends(get_db), current_user = 
     return new_registration
 
 
+@app.delete("/events/{event_id}/register", status_code=200)
+def cancel_event_registration(
+    event_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    # Check whether the event exists
+    event = db.query(Event).filter(
+        Event.event_id == event_id
+    ).first()
+
+    if event is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Event not found"
+        )
+
+    # Find this user's registration for this event
+    registration = db.query(Attendee).filter(
+        Attendee.user_id == current_user.user_id,
+        Attendee.event_id == event_id
+    ).first()
+
+    if registration is None:
+        raise HTTPException(
+            status_code=404,
+            detail="You are not registered for this event"
+        )
+
+    try:
+        db.delete(registration)
+
+        notification = Notification(
+            user_id=current_user.user_id,
+            message=f"You have cancelled your registration for the event: {event.title}"
+        )
+
+        db.add(notification)
+        db.commit()
+
+    except Exception:
+        db.rollback()
+        raise
+
+    return {
+        "message": "Registration cancelled successfully",
+        "event_id": event_id
+    }
+
+
+
 @app.get("/my-registrations")
 def get_my_registrations(db: Session = Depends(get_db), current_user = Depends(get_current_user)):
     registrations = (db.query(Attendee, Event)
