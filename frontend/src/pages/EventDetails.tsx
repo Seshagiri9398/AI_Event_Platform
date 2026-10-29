@@ -4,16 +4,20 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import api from '../api/axios'
 
 interface Event {
-  event_id          : number
-  title             : string
-  description       : string
-  date              : string
-  location          : string
-  capacity          : number
-  organizer_id      : number
-  status            : string
-  registered_count  : number
-  available_seats   : number
+  event_id: number
+  title: string
+  description: string
+  date: string
+  location: string
+  capacity: number
+  organizer_id: number
+  status: string
+  registered_count: number
+  available_seats: number
+}
+
+interface RegisteredEvent {
+  event_id: number
 }
 
 function EventDetails() {
@@ -24,6 +28,7 @@ function EventDetails() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [registering, setRegistering] = useState(false)
+  const [isRegistered, setIsRegistered] = useState(false)
   const [message, setMessage] = useState('')
 
   useEffect(() => {
@@ -41,6 +46,31 @@ function EventDetails() {
         }
 
         setEvent(foundEvent)
+
+        const token = localStorage.getItem('access_token')
+
+        if (token) {
+          try {
+            const registrationResponse = await api.get<RegisteredEvent[]>(
+              '/my-registrations',
+              {
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                },
+              }
+            )
+
+            const alreadyRegistered = registrationResponse.data.some(
+              (item) => item.event_id === Number(eventId)
+            )
+
+            setIsRegistered(alreadyRegistered)
+          } catch {
+            setIsRegistered(false)
+          }
+        } else {
+          setIsRegistered(false)
+        }
       } catch {
         setError('Unable to load event details. Please try again.')
       } finally {
@@ -51,70 +81,68 @@ function EventDetails() {
     fetchEvent()
   }, [eventId])
 
-  
-    const handleRegister = async () => {
-      const token = localStorage.getItem('access_token')
+  const handleRegister = async () => {
+    const token = localStorage.getItem('access_token')
 
-      if (!token) {
-        navigate('/login')
-        return
-      }
-
-      try {
-        setRegistering(true)
-        setMessage('')
-
-        await api.post(
-          `/events/${eventId}/register`,
-          {},
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        )
-
-        setMessage('Successfully registered for this event!')
-
-        // Refresh event details after registration
-        const response = await api.get<Event[]>('/events')
-
-        const updatedEvent = response.data.find(
-          (item) => item.event_id === Number(eventId)
-        )
-
-        if (updatedEvent) {
-          setEvent(updatedEvent)
-        }
-      } catch (err: unknown) {
-        if (
-          typeof err === 'object' &&
-          err !== null &&
-          'response' in err
-        ) {
-          const response = (
-            err as {
-              response?: {
-                data?: { detail?: string }
-              }
-            }
-          ).response
-
-          setMessage(
-            response?.data?.detail || 'Registration failed. Please try again.'
-          )
-        } else {
-          setMessage('Something went wrong. Please try again.')
-        }
-      } finally {
-        setRegistering(false)
-      }
+    if (!token) {
+      navigate('/login')
+      return
     }
+
+    try {
+      setRegistering(true)
+      setMessage('')
+
+      await api.post(
+        `/events/${eventId}/register`,
+        {},
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      )
+
+      setIsRegistered(true)
+      setMessage('Successfully registered for this event!')
+
+      // Refresh participant count and available seats
+      const response = await api.get<Event[]>('/events')
+
+      const updatedEvent = response.data.find(
+        (item) => item.event_id === Number(eventId)
+      )
+
+      if (updatedEvent) {
+        setEvent(updatedEvent)
+      }
+    } catch (err: unknown) {
+      if (typeof err === 'object' && err !== null && 'response' in err) {
+        const response = (
+          err as {
+            response?: {
+              data?: { detail?: string }
+            }
+          }
+        ).response
+
+        setMessage(
+          response?.data?.detail || 'Registration failed. Please try again.'
+        )
+      } else {
+        setMessage('Something went wrong. Please try again.')
+      }
+    } finally {
+      setRegistering(false)
+    }
+  }
 
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50">
-        <p className="text-lg text-gray-600">Loading event details...</p>
+        <p className="text-lg text-gray-600">
+          Loading event details...
+        </p>
       </div>
     )
   }
@@ -125,6 +153,7 @@ function EventDetails() {
         <p className="text-lg text-red-600">
           {error || 'Event not found.'}
         </p>
+
         <Link
           to="/"
           className="rounded-lg bg-blue-600 px-5 py-2 text-white hover:bg-blue-700"
@@ -165,6 +194,7 @@ function EventDetails() {
               <h2 className="mb-2 text-xl font-semibold text-gray-900">
                 About This Event
               </h2>
+
               <p className="whitespace-pre-wrap leading-7 text-gray-600">
                 {event.description || 'No description available.'}
               </p>
@@ -174,7 +204,7 @@ function EventDetails() {
               <div className="rounded-xl bg-gray-50 p-4">
                 <p className="text-sm text-gray-500">Date & Time</p>
                 <p className="mt-1 font-semibold text-gray-900">
-                  {new Date(event.date).toLocaleString()}
+                  {new Date(event.date).toLocaleString('en-IN')}
                 </p>
               </div>
 
@@ -188,21 +218,23 @@ function EventDetails() {
               <div className="rounded-xl bg-gray-50 p-4">
                 <p className="text-sm text-gray-500">Capacity</p>
                 <p className="mt-1 font-semibold text-gray-900">
-                    {event.capacity} participants
+                  {event.capacity} participants
                 </p>
               </div>
 
               <div className="rounded-xl bg-gray-50 p-4">
-                <p className="text-sm text-gray-500">Registered Participants</p>
+                <p className="text-sm text-gray-500">
+                  Registered Participants
+                </p>
                 <p className="mt-1 font-semibold text-blue-700">
-                    {event.registered_count}
+                  {event.registered_count}
                 </p>
               </div>
 
               <div className="rounded-xl bg-gray-50 p-4">
                 <p className="text-sm text-gray-500">Seats Available</p>
                 <p className="mt-1 font-semibold text-green-700">
-                    {event.available_seats}
+                  {event.available_seats}
                 </p>
               </div>
 
@@ -232,17 +264,23 @@ function EventDetails() {
               </p>
             )}
 
-           <button
+            <button
               type="button"
               onClick={handleRegister}
-              disabled={registering || event.available_seats === 0}
+              disabled={
+                registering ||
+                isRegistered ||
+                event.available_seats === 0
+              }
               className="w-full rounded-lg bg-blue-600 px-5 py-3 font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {event.available_seats === 0
                 ? 'Event Full'
-                : registering
-                ? 'Registering...'
-                : 'Register for Event'}
+                : isRegistered
+                  ? 'Already Registered'
+                  : registering
+                    ? 'Registering...'
+                    : 'Register for Event'}
             </button>
           </div>
         </div>
