@@ -51,53 +51,65 @@ function EventDetails() {
     fetchEvent()
   }, [eventId])
 
-  const handleRegister = async () => {
-    const token = localStorage.getItem('access_token')
+  
+    const handleRegister = async () => {
+      const token = localStorage.getItem('access_token')
 
-    if (!token) {
-      navigate('/login')
-      return
-    }
-
-    try {
-      setRegistering(true)
-      setMessage('')
-
-      await api.post(
-        `/events/${eventId}/register`,
-        {},
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      )
-
-      setMessage('Successfully registered for this event!')
-    } catch (err: unknown) {
-      if (
-        typeof err === 'object' &&
-        err !== null &&
-        'response' in err
-      ) {
-        const response = (
-          err as {
-            response?: {
-              data?: { detail?: string }
-            }
-          }
-        ).response
-
-        setMessage(
-          response?.data?.detail || 'Registration failed. Please try again.'
-        )
-      } else {
-        setMessage('Something went wrong. Please try again.')
+      if (!token) {
+        navigate('/login')
+        return
       }
-    } finally {
-      setRegistering(false)
+
+      try {
+        setRegistering(true)
+        setMessage('')
+
+        await api.post(
+          `/events/${eventId}/register`,
+          {},
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        )
+
+        setMessage('Successfully registered for this event!')
+
+        // Refresh event details after registration
+        const response = await api.get<Event[]>('/events')
+
+        const updatedEvent = response.data.find(
+          (item) => item.event_id === Number(eventId)
+        )
+
+        if (updatedEvent) {
+          setEvent(updatedEvent)
+        }
+      } catch (err: unknown) {
+        if (
+          typeof err === 'object' &&
+          err !== null &&
+          'response' in err
+        ) {
+          const response = (
+            err as {
+              response?: {
+                data?: { detail?: string }
+              }
+            }
+          ).response
+
+          setMessage(
+            response?.data?.detail || 'Registration failed. Please try again.'
+          )
+        } else {
+          setMessage('Something went wrong. Please try again.')
+        }
+      } finally {
+        setRegistering(false)
+      }
     }
-  }
 
   if (loading) {
     return (
