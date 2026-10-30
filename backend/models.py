@@ -83,3 +83,15 @@ class Notification(Base):
     message         = Column(String, nullable=False)
     is_read         = Column(Boolean, default=False, nullable=False)
     created_at      = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+class Review(Base):
+    __tablename__ = "reviews"
+
+    review_id      = Column(Integer, primary_key=True, index=True)
+    user_id        = Column(Integer, ForeignKey("users.user_id"), nullable=False)
+    event_id       = Column(Integer, ForeignKey("events.event_id"), nullable=False)
+    rating         = Column(Integer, nullable=False)
+    comment        = Column(String(1000), nullable=True)
+    created_at     = Column(DateTime(timezone=True),nullable=False,default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (UniqueConstraint("user_id", "event_id", name="uq_user_event_review"),)

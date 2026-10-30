@@ -4,7 +4,7 @@ from pydantic import BaseModel, EmailStr, Field
 from datetime import date, datetime, timedelta
 
 
-from backend.models import User, Event, Attendee, Community, CommunityMember, Discussion, Notification
+from backend.models import User, Event, Attendee, Community, CommunityMember, Discussion, Notification, Review
 from backend.database import engine, Base, get_db
 from backend.utils.password import hash_password, verify_password
 from backend.utils.jwt import create_access_token
@@ -96,6 +96,7 @@ class AttendeeResponse(BaseModel):
     attendee_id  : int
     user_id      : int
     event_id     : int
+
     registered_at : datetime
 
     model_config = {"from_attributes": True}
@@ -111,8 +112,8 @@ class CommunityResponse(BaseModel):
 
 
 class CommunityMemberResponse(BaseModel):
-    member_id   : int
-    user_id     : int
+    member_id    : int
+    user_id      : int
     community_id : int
     joined_at    : datetime
 
@@ -127,6 +128,21 @@ class DiscussionResponse(BaseModel):
     created_at   : datetime
 
     model_config = {"from_attributes" : True}
+
+class ReviewCreate(BaseModel):
+    rating   : int = Field(ge=1, le=5)
+    comment  : str | None = None
+
+
+class ReviewResponse(BaseModel):
+    review_id   : int
+    user_id     : int
+    event_id    : int
+    rating      : int
+    comment     : str | None
+    created_at  : datetime
+
+    model_config = {"from_attributes": True}
 
 
 @app.post("/admin/bootstrap", response_model=UserResponse)
@@ -335,6 +351,57 @@ def register_event(event_id: int, db: Session = Depends(get_db), current_user = 
         raise
     
     return new_registration
+
+
+
+@app.post("/events/{event_id}/reviews", response_model=ReviewResponse, status_code=201)
+def create_review(event_id: int, review_data: ReviewCreate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    event = db.query(Event).filter(Event.event_id == event_id).first()
+
+    if event is None:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    registration = db.query(Attendee).filter(
+        Attendee.user_id == current_user.user_id,
+        Attendee.event_id == event_id
+    ).first()
+
+    if registration is None:
+        raise HTTPException(status_code=403, detail="You must register for this event before reviewing it")
+
+    existing_review = db.query(Review).filter(
+        Review.user_id == current_user.user_id,
+        Review.event_id == event_id
+    ).first()
+
+    if existing_review:
+        raise HTTPException(status_code=409, detail="You have already reviewed this event")
+
+    new_review = Review(
+        user_id=current_user.user_id,
+        event_id=event_id,
+        rating=review_data.rating,
+        comment=review_data.comment
+    )
+
+    db.add(new_review)
+    db.commit()
+    db.refresh(new_review)
+
+    return new_review
+
+
+@app.get("/events/{event_id}/reviews", response_model=list[ReviewResponse])
+def get_event_reviews(event_id: int, db: Session = Depends(get_db)):
+    event = db.query(Event).filter(Event.event_id == event_id).first()
+
+    if event is None:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    reviews = db.query(Review).filter(Review.event_id == event_id).order_by(Review.created_at.desc()).all()
+
+    return reviews
+
 
 
 @app.delete("/events/{event_id}/register", status_code=200)
