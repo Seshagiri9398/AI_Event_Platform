@@ -263,6 +263,9 @@ function App() {
             <Link to="/" className="hover:text-blue-200">
               Discover Events
             </Link>
+            <Link to="/communities" className="hover:text-blue-200">
+              Communities
+            </Link>
 
             {token && (
               <>
