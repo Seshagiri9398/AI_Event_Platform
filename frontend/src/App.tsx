@@ -1,20 +1,19 @@
-
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { jwtDecode } from 'jwt-decode'
 import api from './api/axios'
 
 interface Event {
-  event_id         : number
-  title            : string
-  description      : string
-  date             : string
-  location         : string
-  capacity         : number
-  organizer_id     : number
-  status           : string
-  registered_count : number
-  available_seats  : number
+  event_id: number
+  title: string
+  description: string
+  date: string
+  location: string
+  capacity: number
+  organizer_id: number
+  status: string
+  registered_count: number
+  available_seats: number
 }
 
 interface Registration {
@@ -36,6 +35,7 @@ function App() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
+  const [unreadCount, setUnreadCount] = useState(0)
 
   const token = localStorage.getItem('access_token')
 
@@ -90,10 +90,37 @@ function App() {
     }
   }, [])
 
+  const fetchUnreadCount = useCallback(async () => {
+    const accessToken = localStorage.getItem('access_token')
+
+    if (!accessToken) {
+      setUnreadCount(0)
+      return
+    }
+
+    try {
+      const response = await api.get('/notifications/unread-count', {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      })
+
+      setUnreadCount(response.data.unread_count)
+    } catch {
+      setUnreadCount(0)
+    }
+  }, [])
+
   useEffect(() => {
     fetchEvents()
     fetchMyRegistrations()
-  }, [location.key, fetchEvents, fetchMyRegistrations])
+    fetchUnreadCount()
+  }, [
+    location.key,
+    fetchEvents,
+    fetchMyRegistrations,
+    fetchUnreadCount,
+  ])
 
   const filteredEvents = events.filter((event) => {
     const searchText = search.toLowerCase().trim()
@@ -220,6 +247,7 @@ function App() {
   const handleLogout = () => {
     localStorage.removeItem('access_token')
     setRegisteredEvents([])
+    setUnreadCount(0)
     navigate('/login')
   }
 
@@ -250,6 +278,19 @@ function App() {
                   className="hover:text-blue-200"
                 >
                   My Registrations
+                </Link>
+
+                <Link
+                  to="/notifications"
+                  className="relative hover:text-blue-200"
+                >
+                  Notifications
+
+                  {unreadCount > 0 && (
+                    <span className="ml-1 rounded-full bg-red-500 px-2 py-1 text-xs font-bold text-white">
+                      {unreadCount > 99 ? '99+' : unreadCount}
+                    </span>
+                  )}
                 </Link>
 
                 <button
@@ -366,7 +407,7 @@ function App() {
                   <p className="mb-4 line-clamp-3 text-gray-600">
                     {event.description || 'No description available.'}
                   </p>
-                  
+
                   <div className="mb-5 space-y-3 text-sm text-gray-600">
                     <p>
                       <span className="font-semibold">Date:</span>{' '}
@@ -406,9 +447,7 @@ function App() {
                     )}
                   </div>
 
-
                   <div className="mt-auto flex flex-wrap gap-2">
-                    {/* Everyone can view event details */}
                     <Link
                       to={`/events/${event.event_id}`}
                       className="rounded-lg border border-blue-600 px-4 py-2 text-sm font-semibold text-blue-600 hover:bg-blue-100"
@@ -416,7 +455,6 @@ function App() {
                       View Details
                     </Link>
 
-                    {/* Only this event's organizer can edit or delete */}
                     {isOrganizer && (
                       <>
                         <Link
@@ -435,10 +473,11 @@ function App() {
                       </>
                     )}
 
-                    {/* Registration is available to logged-in users */}
                     <button
                       onClick={() => handleRegister(event.event_id)}
-                      disabled={isRegistered || event.available_seats === 0}
+                      disabled={
+                        isRegistered || event.available_seats === 0
+                      }
                       className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-400"
                     >
                       {event.available_seats === 0
