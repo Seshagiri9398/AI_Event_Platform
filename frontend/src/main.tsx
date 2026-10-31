@@ -12,6 +12,7 @@ import EventDetails from './pages/EventDetails'
 import Notifications from './pages/Notifications'
 import Register from './pages/Register'
 import Communities from './pages/Communities'
+import CommunityDetails from './pages/CommunityDetails'
 
 
 createRoot(document.getElementById('root')!).render(
@@ -27,6 +28,7 @@ createRoot(document.getElementById('root')!).render(
         <Route path="/notifications" element={<Notifications/>} />
         <Route path="/register" element={<Register/>} />
         <Route path="/communities" element={<Communities/>} />
+        <Route path="/communities/:communityId" element={<CommunityDetails/>} />
       </Routes>
     </BrowserRouter>
   </StrictMode>,

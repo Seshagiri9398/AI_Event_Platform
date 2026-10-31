@@ -517,6 +517,14 @@ function Communities() {
                     </p>
                   </div>
 
+                  {/* View Community Button */}
+                  <Link
+                    to={`/communities/${community.community_id}`}
+                    className="mt-4 block w-full rounded-lg border border-indigo-500 px-4 py-3 text-center font-semibold text-indigo-400 transition hover:bg-indigo-500/10"
+                  >
+                    View Community
+                  </Link>
+
                   {/* Membership Actions */}
                   <div className="mt-5">
                     {!token ? (
