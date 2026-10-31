@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link } from 'react-router-dom'
+import { jwtDecode } from 'jwt-decode'
 import api from '../api/axios'
 
 interface Community {
@@ -11,6 +12,19 @@ interface Community {
   creator_id: number
   created_at: string
 }
+
+interface CommunityMember {
+  member_id: number
+  user_id: number
+  community_id: number
+  joined_at: string
+}
+
+interface TokenPayload {
+  user_id?: number | string
+}
+
+type MembershipStatus = 'joined' | 'not_joined' | 'unknown'
 
 function Communities() {
   const [communities, setCommunities] = useState<Community[]>([])
@@ -24,7 +38,81 @@ function Communities() {
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
 
+  const [membershipStatus, setMembershipStatus] =
+    useState<Record<number, MembershipStatus>>({})
+
+  const [membershipError, setMembershipError] = useState(false)
+  const [processingCommunityId, setProcessingCommunityId] =
+    useState<number | null>(null)
+
   const token = localStorage.getItem('access_token')
+
+  // Get logged-in user's ID from JWT
+  const getCurrentUserId = (): number | null => {
+    if (!token) return null
+
+    try {
+      const decoded = jwtDecode<TokenPayload>(token)
+      const userId = Number(decoded.user_id)
+
+      return Number.isInteger(userId) && userId > 0 ? userId : null
+    } catch {
+      return null
+    }
+  }
+
+  // Check whether the current user joined each community
+  const fetchMemberships = useCallback(async (communityList: Community[]) => {
+    if (!token) return
+
+    const userId = getCurrentUserId()
+
+    if (userId === null) {
+      setMembershipError(true)
+      return
+    }
+
+    const results = await Promise.all(
+      communityList.map(async (community) => {
+        try {
+          const response = await api.get<CommunityMember[]>(
+            `/communities/${community.community_id}/members`,
+            {
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+            }
+          )
+
+          const isMember = response.data.some(
+            (member) => member.user_id === userId
+          )
+
+          return {
+            communityId: community.community_id,
+            status: isMember ? 'joined' as const : 'not_joined' as const,
+          }
+        } catch {
+          return {
+            communityId: community.community_id,
+            status: 'unknown' as const,
+          }
+        }
+      })
+    )
+
+    const updatedStatus: Record<number, MembershipStatus> = {}
+
+    results.forEach((result) => {
+      updatedStatus[result.communityId] = result.status
+    })
+
+    setMembershipStatus(updatedStatus)
+
+    setMembershipError(
+      results.some((result) => result.status === 'unknown')
+    )
+  }, [token])
 
   // Fetch all communities
   const fetchCommunities = useCallback(async () => {
@@ -35,12 +123,14 @@ function Communities() {
       const response = await api.get<Community[]>('/communities')
 
       setCommunities(response.data)
+
+      await fetchMemberships(response.data)
     } catch {
       setError('Unable to load communities. Please try again.')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [fetchMemberships])
 
   useEffect(() => {
     fetchCommunities()
@@ -86,13 +176,18 @@ function Communities() {
 
       setCommunities((previous) => [response.data, ...previous])
 
+      setMembershipStatus((previous) => ({
+        ...previous,
+        [response.data.community_id]: 'not_joined',
+      }))
+
       setName('')
       setDescription('')
       setShowForm(false)
 
       setMessage('Community created successfully!')
     } catch (err: unknown) {
-      const error = err as {
+      const apiError = err as {
         response?: {
           data?: {
             detail?: string
@@ -101,11 +196,113 @@ function Communities() {
       }
 
       setError(
-        error.response?.data?.detail ||
+        apiError.response?.data?.detail ||
         'Unable to create community. Please try again.'
       )
     } finally {
       setCreating(false)
+    }
+  }
+
+  // Join a community
+  const handleJoinCommunity = async (community: Community) => {
+    if (!token) {
+      setError('Please login to join a community.')
+      return
+    }
+
+    setError('')
+    setMessage('')
+
+    try {
+      setProcessingCommunityId(community.community_id)
+
+      await api.post(
+        `/communities/${community.community_id}/join`,
+        {},
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      )
+
+      setMembershipStatus((previous) => ({
+        ...previous,
+        [community.community_id]: 'joined',
+      }))
+
+      setMessage(`You joined ${community.name} successfully!`)
+    } catch (err: unknown) {
+      const apiError = err as {
+        response?: {
+          status?: number
+          data?: {
+            detail?: string
+          }
+        }
+      }
+
+      if (apiError.response?.status === 409) {
+        setMembershipStatus((previous) => ({
+          ...previous,
+          [community.community_id]: 'joined',
+        }))
+        setMessage('You are already a member of this community.')
+      } else {
+        setError(
+          apiError.response?.data?.detail ||
+          'Unable to join community. Please try again.'
+        )
+      }
+    } finally {
+      setProcessingCommunityId(null)
+    }
+  }
+
+  // Leave a community
+  const handleLeaveCommunity = async (community: Community) => {
+    if (!token) {
+      setError('Please login first.')
+      return
+    }
+
+    setError('')
+    setMessage('')
+
+    try {
+      setProcessingCommunityId(community.community_id)
+
+      await api.delete(
+        `/communities/${community.community_id}/leave`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      )
+
+      setMembershipStatus((previous) => ({
+        ...previous,
+        [community.community_id]: 'not_joined',
+      }))
+
+      setMessage(`You left ${community.name} successfully!`)
+    } catch (err: unknown) {
+      const apiError = err as {
+        response?: {
+          data?: {
+            detail?: string
+          }
+        }
+      }
+
+      setError(
+        apiError.response?.data?.detail ||
+        'Unable to leave community. Please try again.'
+      )
+    } finally {
+      setProcessingCommunityId(null)
     }
   }
 
@@ -164,6 +361,19 @@ function Communities() {
           </div>
         )}
 
+        {/* Membership Check Warning */}
+        {membershipError && (
+          <div className="mb-6 rounded-lg border border-amber-800 bg-amber-950/40 p-4 text-amber-300">
+            Unable to check some membership statuses.
+            <button
+              onClick={() => fetchMemberships(communities)}
+              className="ml-2 font-semibold underline"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
         {/* Create Community Form */}
         {showForm && (
           <div className="mb-10 rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-xl">
@@ -174,20 +384,14 @@ function Communities() {
             {!token && (
               <p className="mb-5 text-sm text-amber-300">
                 Please{' '}
-                <Link
-                  to="/login"
-                  className="font-semibold underline"
-                >
+                <Link to="/login" className="font-semibold underline">
                   login
                 </Link>{' '}
                 before creating a community.
               </p>
             )}
 
-            <form
-              onSubmit={handleCreateCommunity}
-              className="space-y-5"
-            >
+            <form onSubmit={handleCreateCommunity} className="space-y-5">
               <div>
                 <label
                   htmlFor="community-name"
@@ -281,34 +485,78 @@ function Communities() {
 
         {!loading && communities.length > 0 && (
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {communities.map((community) => (
-              <article
-                key={community.community_id}
-                className="flex flex-col rounded-2xl border border-slate-800 bg-slate-900 p-6 transition hover:-translate-y-1 hover:border-indigo-500"
-              >
-                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-500/15 text-xl font-bold text-indigo-400">
-                  {community.name.charAt(0).toUpperCase()}
-                </div>
+            {communities.map((community) => {
+              const status = membershipStatus[community.community_id]
+              const isProcessing =
+                processingCommunityId === community.community_id
 
-                <h3 className="text-xl font-bold">
-                  {community.name}
-                </h3>
+              return (
+                <article
+                  key={community.community_id}
+                  className="flex flex-col rounded-2xl border border-slate-800 bg-slate-900 p-6 transition hover:-translate-y-1 hover:border-indigo-500"
+                >
+                  <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-500/15 text-xl font-bold text-indigo-400">
+                    {community.name.charAt(0).toUpperCase()}
+                  </div>
 
-                <p className="mt-3 flex-1 whitespace-pre-wrap break-words text-sm leading-6 text-slate-400">
-                  {community.description}
-                </p>
+                  <h3 className="text-xl font-bold">
+                    {community.name}
+                  </h3>
 
-                <div className="mt-6 border-t border-slate-800 pt-4">
-                  <p className="text-xs text-slate-500">
-                    Created by user #{community.creator_id}
+                  <p className="mt-3 flex-1 whitespace-pre-wrap break-words text-sm leading-6 text-slate-400">
+                    {community.description}
                   </p>
 
-                  <p className="mt-2 text-xs text-slate-500">
-                    {new Date(community.created_at).toLocaleDateString('en-IN')}
-                  </p>
-                </div>
-              </article>
-            ))}
+                  <div className="mt-6 border-t border-slate-800 pt-4">
+                    <p className="text-xs text-slate-500">
+                      Created by user #{community.creator_id}
+                    </p>
+
+                    <p className="mt-2 text-xs text-slate-500">
+                      {new Date(community.created_at).toLocaleDateString('en-IN')}
+                    </p>
+                  </div>
+
+                  {/* Membership Actions */}
+                  <div className="mt-5">
+                    {!token ? (
+                      <Link
+                        to="/login"
+                        className="block rounded-lg bg-indigo-600 px-4 py-3 text-center font-semibold transition hover:bg-indigo-500"
+                      >
+                        Login to Join
+                      </Link>
+                    ) : status === 'joined' ? (
+                      <div>
+                        <p className="mb-3 text-center text-sm font-semibold text-green-400">
+                          ✓ Joined
+                        </p>
+
+                        <button
+                          onClick={() => handleLeaveCommunity(community)}
+                          disabled={isProcessing}
+                          className="w-full rounded-lg border border-red-700 px-4 py-3 font-semibold text-red-400 transition hover:bg-red-950 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {isProcessing ? 'Please wait...' : 'Leave Community'}
+                        </button>
+                      </div>
+                    ) : status === 'not_joined' ? (
+                      <button
+                        onClick={() => handleJoinCommunity(community)}
+                        disabled={isProcessing}
+                        className="w-full rounded-lg bg-indigo-600 px-4 py-3 font-semibold transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {isProcessing ? 'Joining...' : 'Join Community'}
+                      </button>
+                    ) : (
+                      <p className="rounded-lg border border-slate-700 px-4 py-3 text-center text-sm text-slate-400">
+                        Checking membership...
+                      </p>
+                    )}
+                  </div>
+                </article>
+              )
+            })}
           </div>
         )}
 
