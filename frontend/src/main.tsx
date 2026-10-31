@@ -10,6 +10,7 @@ import CreateEvent from './pages/CreateEvent'
 import EditEvent  from './pages/EditEvent'
 import EventDetails from './pages/EventDetails'
 import Notifications from './pages/Notifications'
+import Register from './pages/Register'
 
 
 createRoot(document.getElementById('root')!).render(
@@ -23,6 +24,7 @@ createRoot(document.getElementById('root')!).render(
         <Route path="/edit-event/:eventId" element={<EditEvent />} />
         <Route path="/events/:eventId" element={<EventDetails />} />
         <Route path="/notifications" element={<Notifications/>} />
+        <Route path="/register" element={<Register/>} />
       </Routes>
     </BrowserRouter>
   </StrictMode>,

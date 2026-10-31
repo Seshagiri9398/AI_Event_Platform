@@ -132,6 +132,16 @@ function Login() {
             Explore events
           </Link>
         </p>
+
+        <p className="mt-4 text-center text-sm text-slate-400">
+          Don't have an account?{' '}
+          <Link
+            to="/register"
+            className="font-semibold text-indigo-400 hover:text-indigo-300"
+          >
+            Create Account
+          </Link>
+        </p>
       </div>
     </main>
   )
