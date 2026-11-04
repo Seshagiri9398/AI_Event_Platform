@@ -4,7 +4,7 @@ from pydantic import BaseModel, EmailStr, Field
 from datetime import date, datetime, timedelta
 
 
-from backend.models import User, Event, Attendee, Community, CommunityMember, Discussion, Notification, Review
+from backend.models import User, Event, Attendee, Community, CommunityMember, Discussion, Notification, Review, CommunityPost
 from backend.database import engine, Base, get_db
 from backend.utils.password import hash_password, verify_password
 from backend.utils.jwt import create_access_token
@@ -51,6 +51,10 @@ class EventCreate(BaseModel):
 class CommunityCreate(BaseModel):
     name         : str
     description  : str
+
+class CommunityPostCreate(BaseModel):
+    title: str
+    content: str
 
 class DiscussionCreate(BaseModel):
     content : str
@@ -119,6 +123,16 @@ class CommunityMemberResponse(BaseModel):
 
     model_config = {"from_attributes" : True}
 
+
+class CommunityPostResponse(BaseModel):
+    post_id      : int
+    community_id : int
+    user_id      : int
+    title        : str
+    content      : str
+    created_at   : datetime
+
+    model_config = {"from_attributes": True}
 
 class DiscussionResponse(BaseModel):
     post_id      : int
@@ -492,6 +506,35 @@ def create_community(community: CommunityCreate, db: Session = Depends(get_db), 
     return new_community
 
 
+@app.post("/communities/{community_id}/posts", status_code=201)
+def create_community_post(community_id: int, post: CommunityPostCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    community = db.query(Community).filter(Community.community_id == community_id).first()
+
+    if community is None:
+        raise HTTPException(status_code=404, detail="Community not found")
+
+    membership = db.query(CommunityMember).filter(
+        CommunityMember.community_id == community_id,
+        CommunityMember.user_id == current_user.user_id
+    ).first()
+
+    if membership is None:
+        raise HTTPException(status_code=403, detail="Join the community to create a post")
+
+    new_post = CommunityPost(
+        community_id=community_id,
+        user_id=current_user.user_id,
+        title=post.title,
+        content=post.content
+    )
+
+    db.add(new_post)
+    db.commit()
+    db.refresh(new_post)
+
+    return new_post
+
+
 @app.get("/communities", response_model= list[CommunityResponse])
 def get_communities(db: Session = Depends(get_db)):
     return db.query(Community).all()
@@ -506,6 +549,17 @@ def get_community(community_id : int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Community not found")
     return community
 
+
+@app.get("/communities/{community_id}/posts", response_model=list[CommunityPostResponse])
+def get_community_posts(community_id: int, db: Session = Depends(get_db)):
+    community = db.query(Community).filter(Community.community_id == community_id).first()
+
+    if community is None:
+        raise HTTPException(status_code=404, detail="Community not found")
+
+    posts = db.query(CommunityPost).filter(CommunityPost.community_id == community_id).order_by(CommunityPost.created_at.desc()).all()
+
+    return posts
 
 
 @app.post("/communities/{community_id}/join")
@@ -626,6 +680,22 @@ def update_discussion(post_id: int, discussion_update:DiscussionUpdate, db: Sess
     db.refresh(discussion)
 
     return discussion
+
+
+@app.delete("/posts/{post_id}")
+def delete_community_post(post_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    post = db.query(CommunityPost).filter(CommunityPost.post_id == post_id).first()
+
+    if post is None:
+        raise HTTPException(status_code=404, detail="Post not found")
+
+    if post.user_id != current_user.user_id:
+        raise HTTPException(status_code=403, detail="You can only delete your own posts")
+
+    db.delete(post)
+    db.commit()
+
+    return {"message": "Post deleted successfully"}
 
 
 

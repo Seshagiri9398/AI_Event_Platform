@@ -63,6 +63,16 @@ class CommunityMember(Base):
     __table_args__ = (UniqueConstraint("user_id","community_id", name = "uq_user_community"),)
 
 
+class CommunityPost(Base):
+    __tablename__ = "community_posts"
+
+    post_id      = Column(Integer, primary_key=True, index=True)
+    community_id = Column(Integer, ForeignKey("communities.community_id"), nullable=False)
+    user_id      = Column(Integer, ForeignKey("users.user_id"), nullable=False)
+    title        = Column(String(200), nullable=False)
+    content      = Column(String, nullable=False)
+    created_at   = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
 
 class Discussion(Base):
     __tablename__ = "discussions"

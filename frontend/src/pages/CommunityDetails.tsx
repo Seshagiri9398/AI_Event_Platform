@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import api from '../api/axios'
+import CommunityPosts from './components/CommunityPosts'
 
 interface Community {
   community_id: number
@@ -251,6 +252,8 @@ function CommunityDetails() {
           )}
 
         </section>
+        
+        <CommunityPosts communityId={Number(communityId)} />
 
       </div>
     </main>
