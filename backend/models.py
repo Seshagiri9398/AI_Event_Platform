@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, UniqueConstraint, Text
 from datetime import datetime, timezone 
 
 
@@ -105,3 +105,13 @@ class Review(Base):
     created_at     = Column(DateTime(timezone=True),nullable=False,default=lambda: datetime.now(timezone.utc))
 
     __table_args__ = (UniqueConstraint("user_id", "event_id", name="uq_user_event_review"),)
+
+
+class Comment(Base):
+    __tablename__ = "comments"
+
+    comment_id  = Column(Integer, primary_key=True, index=True)
+    post_id     = Column(Integer, ForeignKey("community_posts.post_id"), nullable=False)
+    user_id     = Column(Integer, ForeignKey("users.user_id"), nullable=False)
+    content     = Column(Text, nullable=False)
+    created_at  = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))

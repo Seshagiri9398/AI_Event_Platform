@@ -4,7 +4,7 @@ from pydantic import BaseModel, EmailStr, Field
 from datetime import date, datetime, timedelta
 
 
-from backend.models import User, Event, Attendee, Community, CommunityMember, Discussion, Notification, Review, CommunityPost
+from backend.models import User, Event, Attendee, Community, CommunityMember, Discussion, Notification, Review, CommunityPost, Comment
 from backend.database import engine, Base, get_db
 from backend.utils.password import hash_password, verify_password
 from backend.utils.jwt import create_access_token
@@ -155,6 +155,18 @@ class ReviewResponse(BaseModel):
     rating      : int
     comment     : str | None
     created_at  : datetime
+
+    model_config = {"from_attributes": True}
+
+class CommentCreate(BaseModel):
+    content: str
+
+class CommentResponse(BaseModel):
+    comment_id : int
+    post_id    : int
+    user_id    : int
+    content    : str
+    created_at : datetime
 
     model_config = {"from_attributes": True}
 
@@ -533,6 +545,64 @@ def create_community_post(community_id: int, post: CommunityPostCreate, db: Sess
     db.refresh(new_post)
 
     return new_post
+
+
+@app.post("/posts/{post_id}/comments", status_code=201)
+def create_comment(post_id: int, comment: CommentCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    post = db.query(CommunityPost).filter(CommunityPost.post_id == post_id).first()
+
+    if post is None:
+        raise HTTPException(status_code=404, detail="Post not found")
+
+    membership = db.query(CommunityMember).filter(
+        CommunityMember.community_id == post.community_id,
+        CommunityMember.user_id == current_user.user_id
+    ).first()
+
+    if membership is None:
+        raise HTTPException(status_code=403, detail="Join the community to comment")
+
+    if not comment.content.strip():
+        raise HTTPException(status_code=400, detail="Comment cannot be empty")
+
+    new_comment = Comment(
+        post_id=post_id,
+        user_id=current_user.user_id,
+        content=comment.content.strip()
+    )
+
+    db.add(new_comment)
+    db.commit()
+    db.refresh(new_comment)
+
+    return new_comment
+
+
+@app.get("/posts/{post_id}/comments", response_model=list[CommentResponse])
+def get_comments(post_id: int, db: Session = Depends(get_db)):
+    post = db.query(CommunityPost).filter(CommunityPost.post_id == post_id).first()
+
+    if post is None:
+        raise HTTPException(status_code=404, detail="Post not found")
+
+    comments = db.query(Comment).filter(Comment.post_id == post_id).order_by(Comment.created_at.asc()).all()
+
+    return comments
+
+@app.delete("/comments/{comment_id}")
+def delete_comment(comment_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    comment = db.query(Comment).filter(Comment.comment_id == comment_id).first()
+
+    if comment is None:
+        raise HTTPException(status_code=404, detail="Comment not found")
+
+    if comment.user_id != current_user.user_id:
+        raise HTTPException(status_code=403, detail="You can only delete your own comments")
+
+    db.delete(comment)
+    db.commit()
+
+    return {"message": "Comment deleted successfully"}
 
 
 @app.get("/communities", response_model= list[CommunityResponse])
