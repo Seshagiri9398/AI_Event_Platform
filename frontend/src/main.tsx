@@ -13,7 +13,7 @@ import Notifications from './pages/Notifications'
 import Register from './pages/Register'
 import Communities from './pages/Communities'
 import CommunityDetails from './pages/CommunityDetails'
-
+import Profile from './pages/Profile'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -29,6 +29,7 @@ createRoot(document.getElementById('root')!).render(
         <Route path="/register" element={<Register/>} />
         <Route path="/communities" element={<Communities/>} />
         <Route path="/communities/:communityId" element={<CommunityDetails/>} />
+        <Route path="/profile" element={<Profile />} />
       </Routes>
     </BrowserRouter>
   </StrictMode>,

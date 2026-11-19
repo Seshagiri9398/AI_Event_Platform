@@ -80,6 +80,19 @@ class UserResponse(BaseModel):
     role       : str
     created_at : datetime
 
+
+class UserProfileResponse(BaseModel):
+    user_id    : int
+    name       : str
+    email      : EmailStr
+    role       : str
+    created_at : datetime
+
+class UserProfileUpdate(BaseModel):
+    name  : str = Field(min_length=2, max_length=100)
+    email : EmailStr
+
+
 class EventResponse(BaseModel):
     event_id     : int
     title        : str
@@ -235,6 +248,37 @@ def create_user(user: UserCreate, db: Session = Depends(get_db)):
 
     return new_user
 
+
+
+@app.get("/users/me", response_model=UserProfileResponse)
+def get_my_profile(current_user = Depends(get_current_user)):
+    return {
+        "user_id": current_user.user_id,
+        "name": current_user.name,
+        "email": current_user.email,
+        "role": current_user.role,
+        "created_at": current_user.created_at
+    }
+
+
+
+@app.put("/users/me", response_model=UserProfileResponse)
+def update_my_profile(profile: UserProfileUpdate, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+    existing_user = db.query(User).filter(
+        User.email == profile.email,
+        User.user_id != current_user.user_id
+    ).first()
+
+    if existing_user:
+        raise HTTPException(status_code=409, detail="Email already registered")
+
+    current_user.name = profile.name
+    current_user.email = profile.email
+
+    db.commit()
+    db.refresh(current_user)
+
+    return current_user
 
 
 @app.post("/login")

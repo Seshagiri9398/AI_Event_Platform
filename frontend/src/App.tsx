@@ -295,6 +295,14 @@ function App() {
                     </span>
                   )}
                 </Link>
+                
+                {/* Profile link */}
+                <Link
+                  to="/profile"
+                  className="hover:text-blue-200"
+                >
+                  Profile
+                </Link>
 
                 <button
                   onClick={handleLogout}
