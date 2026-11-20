@@ -304,6 +304,13 @@ function App() {
                   Profile
                 </Link>
 
+                 <Link
+                  to="/activity"
+                  className="hover:text-blue-200"
+                >
+                  Activity
+                </Link>
+
                 <button
                   onClick={handleLogout}
                   className="rounded-lg bg-white px-4 py-2 font-semibold text-blue-700 hover:bg-blue-100"

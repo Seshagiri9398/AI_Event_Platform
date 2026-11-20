@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Depends, HTTPException, Header
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from pydantic import BaseModel, EmailStr, Field
 from datetime import date, datetime, timedelta
 
@@ -279,6 +280,32 @@ def update_my_profile(profile: UserProfileUpdate, db: Session = Depends(get_db),
     db.refresh(current_user)
 
     return current_user
+
+
+@app.get("/users/me/activity")
+def get_my_activity(db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+    events_registered = db.query(func.count(Attendee.attendee_id)).filter(
+        Attendee.user_id == current_user.user_id
+    ).scalar()
+
+    communities_joined = db.query(func.count(CommunityMember.member_id)).filter(
+        CommunityMember.user_id == current_user.user_id
+    ).scalar()
+
+    discussions_created = db.query(func.count(CommunityPost.post_id)).filter(
+        CommunityPost.user_id == current_user.user_id
+    ).scalar()
+
+    comments_made = db.query(func.count(Comment.comment_id)).filter(
+        Comment.user_id == current_user.user_id
+    ).scalar()
+
+    return {
+        "events_registered": events_registered,
+        "communities_joined": communities_joined,
+        "discussions_created": discussions_created,
+        "comments_made": comments_made
+    }
 
 
 @app.post("/login")
