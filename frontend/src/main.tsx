@@ -15,6 +15,7 @@ import Communities from './pages/Communities'
 import CommunityDetails from './pages/CommunityDetails'
 import Profile from './pages/Profile'
 import ActivityDashboard from './pages/ActivityDashboard'
+import AdminDashboard from './pages/AdminDashboard'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -32,6 +33,7 @@ createRoot(document.getElementById('root')!).render(
         <Route path="/communities/:communityId" element={<CommunityDetails/>} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/activity" element={<ActivityDashboard />} />
+        <Route path="/admin-dashboard" element={<AdminDashboard />} />
       </Routes>
     </BrowserRouter>
   </StrictMode>,

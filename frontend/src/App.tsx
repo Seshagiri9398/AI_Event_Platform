@@ -40,13 +40,16 @@ function App() {
   const token = localStorage.getItem('access_token')
 
   let currentUserId: number | null = null
+  let currentUserRole: string | null = null
 
   if (token) {
     try {
       const decoded = jwtDecode<TokenPayload>(token)
       currentUserId = decoded.user_id
+      currentUserRole = decoded.role
     } catch {
       currentUserId = null
+      currentUserRole = null
     }
   }
 
@@ -263,6 +266,7 @@ function App() {
             <Link to="/" className="hover:text-blue-200">
               Discover Events
             </Link>
+
             <Link to="/communities" className="hover:text-blue-200">
               Communities
             </Link>
@@ -295,7 +299,7 @@ function App() {
                     </span>
                   )}
                 </Link>
-                
+
                 {/* Profile link */}
                 <Link
                   to="/profile"
@@ -304,12 +308,23 @@ function App() {
                   Profile
                 </Link>
 
-                 <Link
+                {/* Activity link */}
+                <Link
                   to="/activity"
                   className="hover:text-blue-200"
                 >
                   Activity
                 </Link>
+
+                {/* Admin Dashboard - ADMIN only */}
+                {currentUserRole === 'ADMIN' && (
+                  <Link
+                    to="/admin-dashboard"
+                    className="hover:text-blue-200"
+                  >
+                    Admin Dashboard
+                  </Link>
+                )}
 
                 <button
                   onClick={handleLogout}

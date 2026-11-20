@@ -209,6 +209,55 @@ def bootstrap_admin(admin: AdminBootstrapRequest, x_admin_bootstrap_secret: str 
     return new_admin
 
 
+@app.get("/admin/dashboard")
+def get_admin_dashboard(db: Session = Depends(get_db), current_user = Depends(get_current_admin)):
+    # Total counts
+    total_users = db.query(func.count(User.user_id)).scalar()
+    total_events = db.query(func.count(Event.event_id)).scalar()
+    total_communities = db.query(func.count(Community.community_id)).scalar()
+    total_registrations = db.query(func.count(Attendee.attendee_id)).scalar()
+
+    # Latest 5 users
+    recent_users = db.query(User).order_by(
+        User.created_at.desc()
+    ).limit(5).all()
+
+    # Latest 5 events
+    recent_events = db.query(Event).order_by(
+        Event.event_id.desc()
+    ).limit(5).all()
+
+    return {
+        "total_users": total_users,
+        "total_events": total_events,
+        "total_communities": total_communities,
+        "total_registrations": total_registrations,
+
+        "recent_users": [
+            {
+                "user_id": user.user_id,
+                "name": user.name,
+                "email": user.email,
+                "role": user.role,
+                "created_at": user.created_at
+            }
+            for user in recent_users
+        ],
+
+        "recent_events": [
+            {
+                "event_id": event.event_id,
+                "title": event.title,
+                "date": event.date,
+                "location": event.location,
+                "capacity": event.capacity,
+                "status": event.status
+            }
+            for event in recent_events
+        ]
+    }
+
+
 @app.post("/users/change-password")
 def password_change(password : PasswordChange, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
 
